@@ -68,10 +68,48 @@ var tmpl = template.Must(template.New("time").Parse(`
             margin-top: 0.5rem;
             font-weight: 300;
             transition: all 0.3s ease;
+            opacity: 0;
+            transform: translateY(20px);
         }
         body.light-theme .date-display {
             color: #333;
             text-shadow: none;
+        }
+        .date-display.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .date-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #00d9ff;
+            border-radius: 25px;
+            padding: 10px 20px;
+            cursor: pointer;
+            color: #00d9ff;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            z-index: 100;
+            -webkit-tap-highlight-color: transparent;
+            white-space: nowrap;
+        }
+        body.light-theme .date-btn {
+            background: rgba(0, 0, 0, 0.1);
+            border-color: #333;
+            color: #333;
+        }
+        .date-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
+        }
+        body.light-theme .date-btn:hover {
+            background: rgba(0, 0, 0, 0.15);
+        }
+        .date-btn:active {
+            transform: scale(0.95);
         }
         .theme-toggle {
             position: fixed;
@@ -212,6 +250,12 @@ var tmpl = template.Must(template.New("time").Parse(`
                 padding: 8px 14px;
                 font-size: 0.75rem;
             }
+            .date-btn {
+                bottom: 10px;
+                right: 10px;
+                padding: 8px 14px;
+                font-size: 0.75rem;
+            }
             #date {
                 bottom: 10px;
                 right: 10px;
@@ -291,6 +335,7 @@ var tmpl = template.Must(template.New("time").Parse(`
     <button class="theme-toggle" onclick="toggleTheme()" title="Переключить тему">
         <span id="theme-icon">☀️</span>
     </button>
+    <button class="date-btn" onclick="toggleDateDisplay()">📅 Показать дату</button>
     <div id="bubbles-container"></div>
     <div class="clock">
         <div class="time" id="time">{{ .Time }}</div>
@@ -369,6 +414,20 @@ var tmpl = template.Must(template.New("time").Parse(`
         if (savedTheme === 'light') {
             document.body.classList.add('light-theme');
             document.getElementById('theme-icon').textContent = '🌙';
+        }
+        let dateVisible = false;
+        function toggleDateDisplay() {
+            dateVisible = !dateVisible;
+            const btn = document.querySelector('.date-btn');
+            const dateEl = document.getElementById('date');
+            if (dateVisible) {
+                btn.textContent = '📅 Скрыть дату';
+                dateEl.classList.add('visible');
+                updateDate();
+            } else {
+                btn.textContent = '📅 Показать дату';
+                dateEl.classList.remove('visible');
+            }
         }
         function updateTime() {
             const now = new Date();
