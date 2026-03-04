@@ -205,6 +205,15 @@ var tmpl = template.Must(template.New("time").Parse(`
         .bubble.pop {
             animation: pop 0.2s ease-out forwards;
         }
+        .droplet {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.9), rgba(0, 217, 255, 0.5));
+            box-shadow: 0 0 8px rgba(0, 217, 255, 0.4);
+            pointer-events: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
         @keyframes float {
             0%, 100% { transform: translateY(0px); }
             50% { transform: translateY(-20px); }
@@ -382,6 +391,7 @@ var tmpl = template.Must(template.New("time").Parse(`
             
             // Pop on click
             bubble.onclick = function() {
+                createDroplets(bubble);
                 bubble.classList.add('pop');
                 setTimeout(() => bubble.remove(), 200);
             };
@@ -397,7 +407,41 @@ var tmpl = template.Must(template.New("time").Parse(`
             
             container.appendChild(bubble);
         }
-        
+
+        function createDroplets(bubble) {
+            const container = document.getElementById('bubbles-container');
+            const bubbleRect = bubble.getBoundingClientRect();
+            const centerX = bubbleRect.left + bubbleRect.width / 2;
+            const centerY = bubbleRect.top + bubbleRect.height / 2;
+            const numDroplets = Math.floor(Math.random() * 6) + 8;
+
+            for (let i = 0; i < numDroplets; i++) {
+                const droplet = document.createElement('div');
+                droplet.className = 'droplet';
+
+                const size = Math.random() * 8 + 4;
+                droplet.style.width = size + 'px';
+                droplet.style.height = size + 'px';
+                droplet.style.left = centerX + 'px';
+                droplet.style.top = centerY + 'px';
+
+                const angle = (Math.PI * 2 * i) / numDroplets + Math.random() * 0.5;
+                const velocity = Math.random() * 60 + 40;
+                const deltaX = Math.cos(angle) * velocity;
+                const deltaY = Math.sin(angle) * velocity;
+
+                droplet.style.transition = 'all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+                container.appendChild(droplet);
+
+                requestAnimationFrame(() => {
+                    droplet.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+                    droplet.style.opacity = '0';
+                });
+
+                setTimeout(() => droplet.remove(), 600);
+            }
+        }
+
         function toggleTheme() {
             document.body.classList.toggle('light-theme');
             const icon = document.getElementById('theme-icon');
