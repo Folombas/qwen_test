@@ -434,7 +434,7 @@ var tmpl = template.Must(template.New("time").Parse(`
                 container.appendChild(droplet);
 
                 requestAnimationFrame(() => {
-                    droplet.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+                    droplet.style.transform = 'translate(' + deltaX + 'px, ' + deltaY + 'px)';
                     droplet.style.opacity = '0';
                 });
 
