@@ -16,15 +16,20 @@ var tmpl = template.Must(template.New("time").Parse(`
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Current Time</title>
     <style>
+        * {
+            -webkit-tap-highlight-color: transparent;
+            box-sizing: border-box;
+        }
         body {
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
             background: linear-gradient(135deg, #1a1a2e, #16213e);
-            font-family: Arial, sans-serif;
+            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
             transition: background 0.3s ease;
+            overflow-x: hidden;
         }
         body.light-theme {
             background: linear-gradient(135deg, #f5f5f5, #e0e0e0);
@@ -34,6 +39,7 @@ var tmpl = template.Must(template.New("time").Parse(`
             color: #00d9ff;
             text-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
             transition: color 0.3s ease, text-shadow 0.3s ease;
+            padding: 20px;
         }
         body.light-theme .clock {
             color: #333;
@@ -43,11 +49,14 @@ var tmpl = template.Must(template.New("time").Parse(`
             font-size: 5rem;
             font-weight: bold;
             letter-spacing: 0.2rem;
+            user-select: none;
+            -webkit-user-select: none;
         }
         .label {
             font-size: 1.2rem;
             color: #888;
             margin-top: 1rem;
+            font-weight: 300;
         }
         body.light-theme .label {
             color: #555;
@@ -66,6 +75,8 @@ var tmpl = template.Must(template.New("time").Parse(`
             align-items: center;
             justify-content: center;
             transition: all 0.3s ease;
+            z-index: 100;
+            -webkit-tap-highlight-color: transparent;
         }
         body.light-theme .theme-toggle {
             background: rgba(0, 0, 0, 0.1);
@@ -78,11 +89,16 @@ var tmpl = template.Must(template.New("time").Parse(`
         body.light-theme .theme-toggle:hover {
             background: rgba(0, 0, 0, 0.15);
         }
+        .theme-toggle:active {
+            transform: scale(0.95);
+        }
         .theme-toggle span {
             font-size: 1.5rem;
         }
         #date {
             transition: color 0.3s ease;
+            text-align: center;
+            padding: 10px;
         }
         .bubble-btn {
             position: fixed;
@@ -96,6 +112,9 @@ var tmpl = template.Must(template.New("time").Parse(`
             color: #00d9ff;
             font-size: 0.9rem;
             transition: all 0.3s ease;
+            z-index: 100;
+            -webkit-tap-highlight-color: transparent;
+            white-space: nowrap;
         }
         body.light-theme .bubble-btn {
             background: rgba(0, 0, 0, 0.1);
@@ -109,6 +128,9 @@ var tmpl = template.Must(template.New("time").Parse(`
         body.light-theme .bubble-btn:hover {
             background: rgba(0, 0, 0, 0.15);
         }
+        .bubble-btn:active {
+            transform: scale(0.95);
+        }
         .bubble {
             position: absolute;
             border-radius: 50%;
@@ -117,6 +139,8 @@ var tmpl = template.Must(template.New("time").Parse(`
             cursor: pointer;
             animation: float 3s ease-in-out infinite;
             transition: transform 0.1s ease;
+            user-select: none;
+            -webkit-user-select: none;
         }
         body.light-theme .bubble {
             background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.9), rgba(100, 150, 200, 0.5));
@@ -124,6 +148,9 @@ var tmpl = template.Must(template.New("time").Parse(`
         }
         .bubble:hover {
             transform: scale(1.1);
+        }
+        .bubble:active {
+            transform: scale(0.9);
         }
         .bubble.pop {
             animation: pop 0.2s ease-out forwards;
@@ -148,6 +175,102 @@ var tmpl = template.Must(template.New("time").Parse(`
         }
         #bubbles-container .bubble {
             pointer-events: auto;
+        }
+        /* Material Design Breakpoints - Mobile First */
+        @media (max-width: 480px) {
+            .time {
+                font-size: 2.5rem;
+                letter-spacing: 0.1rem;
+            }
+            .label {
+                font-size: 0.9rem;
+            }
+            .theme-toggle {
+                top: 10px;
+                right: 10px;
+                width: 44px;
+                height: 44px;
+            }
+            .theme-toggle span {
+                font-size: 1.2rem;
+            }
+            .bubble-btn {
+                top: 10px;
+                left: 10px;
+                padding: 8px 14px;
+                font-size: 0.75rem;
+            }
+            #date {
+                bottom: 10px;
+                right: 10px;
+                left: 10px;
+                font-size: 0.75rem;
+            }
+            .clock {
+                padding: 15px;
+            }
+        }
+        @media (min-width: 481px) and (max-width: 768px) {
+            .time {
+                font-size: 3.5rem;
+                letter-spacing: 0.15rem;
+            }
+            .label {
+                font-size: 1rem;
+            }
+            .theme-toggle {
+                width: 48px;
+                height: 48px;
+            }
+            .theme-toggle span {
+                font-size: 1.3rem;
+            }
+            .bubble-btn {
+                padding: 9px 16px;
+                font-size: 0.8rem;
+            }
+            #date {
+                font-size: 0.85rem;
+            }
+        }
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .time {
+                font-size: 4rem;
+            }
+            .label {
+                font-size: 1.1rem;
+            }
+        }
+        /* Landscape orientation on mobile */
+        @media (max-height: 500px) and (orientation: landscape) {
+            .time {
+                font-size: 3rem;
+            }
+            .label {
+                font-size: 0.85rem;
+            }
+            .theme-toggle {
+                top: 5px;
+                right: 5px;
+            }
+            .bubble-btn {
+                top: 5px;
+                left: 5px;
+                padding: 6px 12px;
+                font-size: 0.7rem;
+            }
+        }
+        /* Touch device optimizations */
+        @media (hover: none) and (pointer: coarse) {
+            .theme-toggle,
+            .bubble-btn {
+                min-width: 48px;
+                min-height: 48px;
+            }
+            .bubble {
+                min-width: 40px;
+                min-height: 40px;
+            }
         }
     </style>
 </head>
