@@ -84,17 +84,139 @@ var tmpl = template.Must(template.New("time").Parse(`
         #date {
             transition: color 0.3s ease;
         }
+        .bubble-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #00d9ff;
+            border-radius: 25px;
+            padding: 10px 20px;
+            cursor: pointer;
+            color: #00d9ff;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+        body.light-theme .bubble-btn {
+            background: rgba(0, 0, 0, 0.1);
+            border-color: #333;
+            color: #333;
+        }
+        .bubble-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+        body.light-theme .bubble-btn:hover {
+            background: rgba(0, 0, 0, 0.15);
+        }
+        .bubble {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.8), rgba(0, 217, 255, 0.4));
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.3);
+            cursor: pointer;
+            animation: float 3s ease-in-out infinite;
+            transition: transform 0.1s ease;
+        }
+        body.light-theme .bubble {
+            background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.9), rgba(100, 150, 200, 0.5));
+            box-shadow: 0 0 10px rgba(100, 150, 200, 0.4);
+        }
+        .bubble:hover {
+            transform: scale(1.1);
+        }
+        .bubble.pop {
+            animation: pop 0.2s ease-out forwards;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+        }
+        @keyframes pop {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+        #bubbles-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 1;
+        }
+        #bubbles-container .bubble {
+            pointer-events: auto;
+        }
     </style>
 </head>
 <body>
+    <button class="bubble-btn" onclick="toggleBubbles()">🫧 Активировать пузырьки</button>
     <button class="theme-toggle" onclick="toggleTheme()" title="Переключить тему">
         <span id="theme-icon">☀️</span>
     </button>
+    <div id="bubbles-container"></div>
     <div class="clock">
         <div class="time" id="time">{{ .Time }}</div>
         <div class="label">Московское время сейчас</div>
     </div>
     <script>
+        let bubblesActive = false;
+        let bubblesInterval = null;
+        
+        function toggleBubbles() {
+            const btn = document.querySelector('.bubble-btn');
+            if (bubblesActive) {
+                bubblesActive = false;
+                btn.textContent = '🫧 Активировать пузырьки';
+                clearInterval(bubblesInterval);
+                // Remove all bubbles
+                const container = document.getElementById('bubbles-container');
+                container.innerHTML = '';
+            } else {
+                bubblesActive = true;
+                btn.textContent = '🫧 Отключить пузырьки';
+                createBubble();
+                bubblesInterval = setInterval(createBubble, 500);
+            }
+        }
+        
+        function createBubble() {
+            const container = document.getElementById('bubbles-container');
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble';
+            
+            // Random size between 20 and 60px
+            const size = Math.random() * 40 + 20;
+            bubble.style.width = size + 'px';
+            bubble.style.height = size + 'px';
+            
+            // Random position
+            bubble.style.left = Math.random() * window.innerWidth + 'px';
+            bubble.style.top = Math.random() * window.innerHeight + 'px';
+            
+            // Random animation delay
+            bubble.style.animationDelay = Math.random() * 2 + 's';
+            
+            // Pop on click
+            bubble.onclick = function() {
+                bubble.classList.add('pop');
+                setTimeout(() => bubble.remove(), 200);
+            };
+            
+            // Remove bubble after 10 seconds
+            setTimeout(() => {
+                if (bubble.parentNode) {
+                    bubble.style.transition = 'opacity 1s ease';
+                    bubble.style.opacity = '0';
+                    setTimeout(() => bubble.remove(), 1000);
+                }
+            }, 10000);
+            
+            container.appendChild(bubble);
+        }
+        
         function toggleTheme() {
             document.body.classList.toggle('light-theme');
             const icon = document.getElementById('theme-icon');
