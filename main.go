@@ -434,12 +434,29 @@ var tmpl = template.Must(template.New("index").Parse(`
             transform: translateX(10px);
         }
         .option-btn.correct {
-            background: rgba(0,255,136,0.2);
+            background: rgba(0,255,136,0.25);
             border-color: #00ff88;
+            box-shadow: 0 0 25px rgba(0,255,136,0.5), inset 0 0 15px rgba(0,255,136,0.2);
+            animation: correctPulse 0.6s ease-out;
+            transform: scale(1.02);
         }
         .option-btn.wrong {
-            background: rgba(255,71,87,0.2);
+            background: rgba(255,71,87,0.25);
             border-color: #ff4757;
+            box-shadow: 0 0 25px rgba(255,71,87,0.5), inset 0 0 15px rgba(255,71,87,0.2);
+            animation: wrongShake 0.5s ease-out;
+        }
+        @keyframes correctPulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 rgba(0,255,136,0); }
+            50% { transform: scale(1.05); box-shadow: 0 0 35px rgba(0,255,136,0.7); }
+            100% { transform: scale(1.02); box-shadow: 0 0 25px rgba(0,255,136,0.5); }
+        }
+        @keyframes wrongShake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-10px); }
+            40% { transform: translateX(10px); }
+            60% { transform: translateX(-10px); }
+            80% { transform: translateX(10px); }
         }
         .option-btn.disabled {
             pointer-events: none;
