@@ -1,5 +1,290 @@
 [
   {
+    "id": 1,
+    "question": "Какая команда используется для компиляции и запуска Go программы?",
+    "options": ["go run", "go build", "go execute", "go start"],
+    "correct": 0,
+    "exp": 5
+  },
+  {
+    "id": 2,
+    "question": "Как в Go объявляется константа?",
+    "options": ["const", "final", "define", "let"],
+    "correct": 0,
+    "exp": 5
+  },
+  {
+    "id": 3,
+    "question": "Что выведет `fmt.Println(len(\"Go\"))`?",
+    "options": ["2", "4", "8", "ошибка"],
+    "correct": 0,
+    "exp": 5
+  },
+  {
+    "id": 4,
+    "question": "Какой оператор используется для объявления переменной?",
+    "options": ["var", "let", "dim", "def"],
+    "correct": 0,
+    "exp": 5
+  },
+  {
+    "id": 5,
+    "question": "Как объявить срез (slice) в Go?",
+    "options": ["[]int", "int[]", "Array[int]", "Slice[int]"],
+    "correct": 0,
+    "exp": 5
+  },
+  {
+    "id": 6,
+    "question": "Что такое горутина?",
+    "options": [
+      "Легковесный поток, управляемый средой выполнения Go",
+      "Тяжеловесный поток ОС",
+      "Функция обратного вызова",
+      "Асинхронная операция"
+    ],
+    "correct": 0,
+    "exp": 10
+  },
+  {
+    "id": 7,
+    "question": "Какое ключевое слово используется для создания горутины?",
+    "options": ["go", "async", "spawn", "thread"],
+    "correct": 0,
+    "exp": 5
+  },
+  {
+    "id": 8,
+    "question": "Что возвращает функция `len()` для строки?",
+    "options": [
+      "Количество байт в строке",
+      "Количество символов (rune)",
+      "Количество слов",
+      "Количество строк"
+    ],
+    "correct": 0,
+    "exp": 10
+  },
+  {
+    "id": 9,
+    "question": "Как инициализировать map в Go?",
+    "options": [
+      "make(map[string]int)",
+      "new(map[string]int)",
+      "map[string]int{}",
+      "Все вышеперечисленное"
+    ],
+    "correct": 3,
+    "exp": 10
+  },
+  {
+    "id": 10,
+    "question": "Что такое `defer`?",
+    "options": [
+      "Откладывает вызов функции до возврата из текущей функции",
+      "Запускает горутину",
+      "Создаёт канал",
+      "Объявляет переменную"
+    ],
+    "correct": 0,
+    "exp": 10
+  },
+  {
+    "id": 11,
+    "question": "Как объявить указатель на int?",
+    "options": ["*int", "&int", "int*", "pointer(int)"],
+    "correct": 0,
+    "exp": 5
+  },
+  {
+    "id": 12,
+    "question": "Что выведет `fmt.Println(3 > 2 && 1 < 5)`?",
+    "options": ["true", "false", "ошибка", "nil"],
+    "correct": 0,
+    "exp": 5
+  },
+  {
+    "id": 13,
+    "question": "Как получить длину слайса?",
+    "options": ["len(slice)", "size(slice)", "length(slice)", "slice.Len()"],
+    "correct": 0,
+    "exp": 5
+  },
+  {
+    "id": 14,
+    "question": "Что такое `range` в Go?",
+    "options": [
+      "Итерирует по элементам слайса, map, массива или строки",
+      "Создаёт диапазон чисел",
+      "Определяет границы массива",
+      "Проверяет существование ключа"
+    ],
+    "correct": 0,
+    "exp": 10
+  },
+  {
+    "id": 15,
+    "question": "Как объявить массив из 5 элементов типа int?",
+    "options": ["[5]int", "int[5]", "Array[int,5]", "array(5, int)"],
+    "correct": 0,
+    "exp": 5
+  },
+  {
+    "id": 16,
+    "question": "Что такое `struct` в Go?",
+    "options": [
+      "Составной тип данных, объединяющий поля разных типов",
+      "Интерфейс для методов",
+      "Тип для хранения указателей",
+      "Функция обратного вызова"
+    ],
+    "correct": 0,
+    "exp": 10
+  },
+  {
+    "id": 17,
+    "question": "Как создать новый канал?",
+    "options": ["make(chan int)", "new(chan int)", "chan int{}", "channel(int)"],
+    "correct": 0,
+    "exp": 5
+  },
+  {
+    "id": 18,
+    "question": "Что делает оператор `<-` с каналом?",
+    "options": [
+      "Отправляет или получает данные из канала",
+      "Сравнивает значения",
+      "Создаёт новый канал",
+      "Закрывает канал"
+    ],
+    "correct": 0,
+    "exp": 10
+  },
+  {
+    "id": 19,
+    "question": "Как объявить интерфейс в Go?",
+    "options": [
+      "type InterfaceName interface { Method() }",
+      "interface InterfaceName { Method() }",
+      "struct InterfaceName { Method() }",
+      "class InterfaceName implements { Method() }"
+    ],
+    "correct": 0,
+    "exp": 10
+  },
+  {
+    "id": 20,
+    "question": "Что такое `nil` в Go?",
+    "options": [
+      "Нулевое значение для указателей, функций, интерфейсов, каналов, мапов и слайсов",
+      "Пустая строка",
+      "Нулевое число",
+      "Неопределённое значение"
+    ],
+    "correct": 0,
+    "exp": 10
+  },
+  {
+    "id": 21,
+    "question": "Как добавить элемент в слайс?",
+    "options": ["append(slice, elem)", "slice.add(elem)", "push(slice, elem)", "slice.push(elem)"],
+    "correct": 0,
+    "exp": 5
+  },
+  {
+    "id": 22,
+    "question": "Что выведет `fmt.Println(bool(true && false))`?",
+    "options": ["false", "true", "ошибка", "nil"],
+    "correct": 0,
+    "exp": 5
+  },
+  {
+    "id": 23,
+    "question": "Как объявить функцию, возвращающую два значения?",
+    "options": [
+      "func foo() (int, string)",
+      "func foo() int, string",
+      "func foo() [int, string]",
+      "func foo() -> (int, string)"
+    ],
+    "correct": 0,
+    "exp": 10
+  },
+  {
+    "id": 24,
+    "question": "Что такое `switch` в Go?",
+    "options": [
+      "Оператор выбора, выполняющий одну из групп инструкций",
+      "Оператор цикла",
+      "Оператор объявления переменной",
+      "Оператор создания канала"
+    ],
+    "correct": 0,
+    "exp": 5
+  },
+  {
+    "id": 25,
+    "question": "Как проверить тип значения интерфейса?",
+    "options": [
+      "value.(Type)",
+      "typeof(value)",
+      "value.Type()",
+      "Type(value)"
+    ],
+    "correct": 0,
+    "exp": 10
+  },
+  {
+    "id": 26,
+    "question": "Что делает `close(ch)`?",
+    "options": [
+      "Закрывает канал для записи",
+      "Удаляет канал",
+      "Очищает канал",
+      "Создаёт новый канал"
+    ],
+    "correct": 0,
+    "exp": 10
+  },
+  {
+    "id": 27,
+    "question": "Как объявить метод для структуры?",
+    "options": [
+      "func (s StructType) Method() {}",
+      "func Method(s StructType) {}",
+      "method (s StructType) Method() {}",
+      "StructType.Method = func() {}"
+    ],
+    "correct": 0,
+    "exp": 10
+  },
+  {
+    "id": 28,
+    "question": "Что такое `fallthrough` в switch?",
+    "options": [
+      "Продолжает выполнение следующего case без проверки условия",
+      "Прерывает switch",
+      "Возвращает значение из switch",
+      "Создаёт новый case"
+    ],
+    "correct": 0,
+    "exp": 15
+  },
+  {
+    "id": 29,
+    "question": "Как создать срез из массива?",
+    "options": ["array[1:4]", "slice(array)", "array.slice(1,4)", "newSlice(array)"],
+    "correct": 0,
+    "exp": 5
+  },
+  {
+    "id": 30,
+    "question": "Что выведет `fmt.Println(10 % 3)`?",
+    "options": ["1", "3", "0", "10"],
+    "correct": 0,
+    "exp": 5
+  },
+  {
     "id": 31,
     "question": "Какой тип данных в Go представляет собой указатель?",
     "options": ["*int", "&int", "int*", "ptr(int)"],
