@@ -780,7 +780,7 @@ var tmpl = template.Must(template.New("index").Parse(`
                 }
 
                 currentQuestion = data.question;
-                document.getElementById('question-text').textContent = currentQuestion.Question;
+                document.getElementById('question-text').textContent = currentQuestion.question;
                 document.getElementById('question-counter').textContent =
                     'Вопрос ' + (data.answered + 1) + ' из ' + data.total;
                 document.getElementById('progress-fill').style.width =
@@ -789,7 +789,7 @@ var tmpl = template.Must(template.New("index").Parse(`
                 // Render options
                 const container = document.getElementById('options-container');
                 container.innerHTML = '';
-                currentQuestion.Options.forEach((opt, idx) => {
+                currentQuestion.options.forEach((opt, idx) => {
                     const btn = document.createElement('button');
                     btn.className = 'option-btn';
                     btn.textContent = opt;
@@ -818,7 +818,7 @@ var tmpl = template.Must(template.New("index").Parse(`
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        question_id: currentQuestion.ID,
+                        question_id: currentQuestion.id,
                         option_index: optionIndex
                     })
                 });
