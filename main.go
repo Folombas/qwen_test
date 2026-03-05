@@ -8,6 +8,24 @@ import (
 	"time"
 )
 
+// Holiday represents a holiday event
+type Holiday struct {
+	Name        string
+	Description string
+	Type        string // international, national, professional
+}
+
+// getHolidaysForMarch5 returns holidays for March 5th
+func getHolidaysForMarch5() []Holiday {
+	return []Holiday{
+		{Name: "Всемирный день эффективности", Description: "Международный праздник, посвященный повышению личной и профессиональной эффективности", Type: "international"},
+		{Name: "День архивариуса", Description: "Профессиональный праздник работников архивов в России", Type: "professional"},
+		{Name: "День физкультурника", Description: "Праздник здорового образа жизни и спорта", Type: "professional"},
+		{Name: "День рождения А. С. Пушкина", Description: "День рождения великого русского поэта (1799 год)", Type: "cultural"},
+		{Name: "День обретения мощей блаженной Ксении Петербургской", Description: "Православный праздник", Type: "religious"},
+	}
+}
+
 var tmpl = template.Must(template.New("time").Parse(`
 <!DOCTYPE html>
 <html lang="en">
@@ -109,6 +127,42 @@ var tmpl = template.Must(template.New("time").Parse(`
             background: rgba(0, 0, 0, 0.15);
         }
         .date-btn:active {
+            transform: scale(0.95);
+        }
+        .holidays-btn {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #00d9ff;
+            border-radius: 25px;
+            padding: 10px 20px;
+            cursor: pointer;
+            color: #00d9ff;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            z-index: 100;
+            -webkit-tap-highlight-color: transparent;
+            white-space: nowrap;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        body.light-theme .holidays-btn {
+            background: rgba(0, 0, 0, 0.1);
+            border-color: #333;
+            color: #333;
+        }
+        .holidays-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
+        }
+        body.light-theme .holidays-btn:hover {
+            background: rgba(0, 0, 0, 0.15);
+        }
+        .holidays-btn:active {
             transform: scale(0.95);
         }
         .theme-toggle {
@@ -265,6 +319,12 @@ var tmpl = template.Must(template.New("time").Parse(`
                 padding: 8px 14px;
                 font-size: 0.75rem;
             }
+            .holidays-btn {
+                bottom: 10px;
+                left: 10px;
+                padding: 8px 14px;
+                font-size: 0.75rem;
+            }
             #date {
                 bottom: 10px;
                 right: 10px;
@@ -345,6 +405,7 @@ var tmpl = template.Must(template.New("time").Parse(`
         <span id="theme-icon">☀️</span>
     </button>
     <button class="date-btn" onclick="toggleDateDisplay()">📅 Показать дату</button>
+    <a href="/holidays" class="holidays-btn">🎉 Какой праздник сегодня</a>
     <div id="bubbles-container"></div>
     <div class="clock">
         <div class="time" id="time">{{ .Time }}</div>
@@ -497,6 +558,346 @@ var tmpl = template.Must(template.New("time").Parse(`
 </html>
 `))
 
+var holidaysTmpl = template.Must(template.New("holidays").Parse(`
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Праздники сегодня</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #fff;
+            padding: 20px;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+        body.light-theme {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 50%, #e8eaf6 100%);
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding-top: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            animation: slideDown 0.5s ease-out;
+        }
+        .header h1 {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        body.light-theme .header h1 {
+            background: linear-gradient(135deg, #1a1a2e, #0f3460);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .header .date {
+            font-size: 1.2rem;
+            color: #888;
+            font-weight: 400;
+        }
+        body.light-theme .header .date {
+            color: #555;
+        }
+        .holidays-list {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .holiday-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            animation: fadeInUp 0.5s ease-out backwards;
+            cursor: pointer;
+        }
+        body.light-theme .holiday-card {
+            background: rgba(255, 255, 255, 0.8);
+            border-color: rgba(0, 0, 0, 0.1);
+        }
+        .holiday-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 217, 255, 0.3);
+            border-color: #00d9ff;
+        }
+        body.light-theme .holiday-card:hover {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+        .holiday-card:nth-child(1) { animation-delay: 0.1s; }
+        .holiday-card:nth-child(2) { animation-delay: 0.15s; }
+        .holiday-card:nth-child(3) { animation-delay: 0.2s; }
+        .holiday-card:nth-child(4) { animation-delay: 0.25s; }
+        .holiday-card:nth-child(5) { animation-delay: 0.3s; }
+        .holiday-name {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .holiday-type {
+            font-size: 0.75rem;
+            padding: 4px 12px;
+            border-radius: 20px;
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        .type-international {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff;
+        }
+        .type-national {
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            color: #fff;
+        }
+        .type-professional {
+            background: linear-gradient(135deg, #4facfe, #00f2fe);
+            color: #fff;
+        }
+        .type-cultural {
+            background: linear-gradient(135deg, #fa709a, #fee140);
+            color: #fff;
+        }
+        .type-religious {
+            background: linear-gradient(135deg, #a8edea, #fed6e3);
+            color: #333;
+        }
+        .holiday-description {
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: #aaa;
+        }
+        body.light-theme .holiday-description {
+            color: #555;
+        }
+        .back-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #00d9ff;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            z-index: 100;
+            text-decoration: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body.light-theme .back-btn {
+            background: rgba(0, 0, 0, 0.1);
+            border-color: #333;
+        }
+        .back-btn:hover {
+            transform: scale(1.1) rotate(-10deg);
+            background: rgba(255, 255, 255, 0.2);
+        }
+        body.light-theme .back-btn:hover {
+            background: rgba(0, 0, 0, 0.15);
+        }
+        .back-btn:active {
+            transform: scale(0.95);
+        }
+        .back-btn span {
+            font-size: 1.5rem;
+            color: #00d9ff;
+        }
+        body.light-theme .back-btn span {
+            color: #333;
+        }
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #00d9ff;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            z-index: 100;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body.light-theme .theme-toggle {
+            background: rgba(0, 0, 0, 0.1);
+            border-color: #333;
+        }
+        .theme-toggle:hover {
+            transform: scale(1.1);
+            background: rgba(255, 255, 255, 0.2);
+        }
+        body.light-theme .theme-toggle:hover {
+            background: rgba(0, 0, 0, 0.15);
+        }
+        .theme-toggle:active {
+            transform: scale(0.95);
+        }
+        .theme-toggle span {
+            font-size: 1.5rem;
+        }
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        /* Mobile First - Responsive Design */
+        @media (max-width: 480px) {
+            body {
+                padding: 15px;
+            }
+            .header h1 {
+                font-size: 1.8rem;
+            }
+            .header .date {
+                font-size: 1rem;
+            }
+            .holiday-card {
+                padding: 20px;
+            }
+            .holiday-name {
+                font-size: 1.1rem;
+            }
+            .holiday-description {
+                font-size: 0.9rem;
+            }
+            .back-btn,
+            .theme-toggle {
+                width: 44px;
+                height: 44px;
+                top: 10px;
+            }
+            .back-btn {
+                left: 10px;
+            }
+            .theme-toggle {
+                right: 10px;
+            }
+        }
+        @media (min-width: 481px) and (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            .holiday-name {
+                font-size: 1.2rem;
+            }
+        }
+        @media (min-width: 769px) {
+            .container {
+                padding-top: 40px;
+            }
+            .header h1 {
+                font-size: 3rem;
+            }
+        }
+        /* Touch device optimizations */
+        @media (hover: none) and (pointer: coarse) {
+            .back-btn,
+            .theme-toggle {
+                min-width: 48px;
+                min-height: 48px;
+            }
+            .holiday-card {
+                min-height: 80px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <a href="/" class="back-btn" title="На главную">
+        <span>←</span>
+    </a>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Переключить тему">
+        <span id="theme-icon">☀️</span>
+    </button>
+    <div class="container">
+        <div class="header">
+            <h1>🎉 Праздники сегодня</h1>
+            <p class="date">{{ .Date }}</p>
+        </div>
+        <div class="holidays-list">
+            {{ range .Holidays }}
+            <div class="holiday-card">
+                <div class="holiday-name">
+                    {{ .Name }}
+                    <span class="holiday-type type-{{ .Type }}">{{ .Type }}</span>
+                </div>
+                <p class="holiday-description">{{ .Description }}</p>
+            </div>
+            {{ end }}
+        </div>
+    </div>
+    <script>
+        // Load saved theme
+        const savedTheme = localStorage.getItem('holidays-theme');
+        if (savedTheme === 'light') {
+            document.body.classList.add('light-theme');
+            document.getElementById('theme-icon').textContent = '🌙';
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle('light-theme');
+            const icon = document.getElementById('theme-icon');
+            if (document.body.classList.contains('light-theme')) {
+                icon.textContent = '🌙';
+                localStorage.setItem('holidays-theme', 'light');
+            } else {
+                icon.textContent = '☀️';
+                localStorage.setItem('holidays-theme', 'dark');
+            }
+        }
+    </script>
+</body>
+</html>
+`))
+
 func timeHandler(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	timeStr := fmt.Sprintf("%02d-%02d-%02d", now.Hour(), now.Minute(), now.Second())
@@ -516,8 +917,28 @@ func timeHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	http.HandleFunc("/", timeHandler)
+	http.HandleFunc("/holidays", holidaysHandler)
 
 	port := ":8080"
 	fmt.Printf("Starting server on http://localhost%s\n", port)
 	log.Fatal(http.ListenAndServe(port, nil))
+}
+
+// holidaysHandler renders the holidays page
+func holidaysHandler(w http.ResponseWriter, r *http.Request) {
+	holidays := getHolidaysForMarch5()
+	
+	data := struct {
+		Holidays []Holiday
+		Date     string
+	}{
+		Holidays: holidays,
+		Date:     "5 марта",
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	err := holidaysTmpl.Execute(w, data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
