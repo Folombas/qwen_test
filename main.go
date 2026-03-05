@@ -1,571 +1,199 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
+	"math"
+	"math/rand"
 	"net/http"
+	"os"
+	"sync"
 	"time"
 )
 
-// Holiday represents a holiday event
-type Holiday struct {
-	Name        string
-	Description string
-	Type        string // international, national, professional
+// Question представляет вопрос викторины
+type Question struct {
+	ID       int      `json:"id"`
+	Question string   `json:"question"`
+	Options  []string `json:"options"`
+	Correct  int      `json:"correct"`
+	Exp      int      `json:"exp"`
 }
 
-// getHolidaysForMarch5 returns holidays for March 5th
-func getHolidaysForMarch5() []Holiday {
-	return []Holiday{
-		{Name: "Всемирный день эффективности", Description: "Международный праздник, посвященный повышению личной и профессиональной эффективности", Type: "international"},
-		{Name: "День архивариуса", Description: "Профессиональный праздник работников архивов в России", Type: "professional"},
-		{Name: "День физкультурника", Description: "Праздник здорового образа жизни и спорта", Type: "professional"},
-		{Name: "День рождения А. С. Пушкина", Description: "День рождения великого русского поэта (1799 год)", Type: "cultural"},
-		{Name: "День обретения мощей блаженной Ксении Петербургской", Description: "Православный праздник", Type: "religious"},
+// UserData хранит статистику игрока
+type UserData struct {
+	ID             string `json:"id"`
+	TotalEXP       int    `json:"total_exp"`
+	CorrectAnswers int    `json:"correct_answers"`
+	WrongAnswers   int    `json:"wrong_answers"`
+	Level          int    `json:"level"`
+	AskedQuestions []int  `json:"asked_questions"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+// Session хранит активную сессию игрока
+type Session struct {
+	UserID      string
+	CurrentQ    *Question
+	StartTime   time.Time
+}
+
+// API Request/Response types
+type AnswerRequest struct {
+	QuestionID int `json:"question_id"`
+	OptionIndex int `json:"option_index"`
+}
+
+type AnswerResponse struct {
+	Correct       bool   `json:"correct"`
+	Exp           int    `json:"exp"`
+	CorrectOption int    `json:"correct_option"`
+	Message       string `json:"message"`
+	NewExp        int    `json:"new_exp"`
+	NewLevel      int    `json:"new_level"`
+}
+
+type QuizResponse struct {
+	Question *Question `json:"question"`
+	Total    int       `json:"total"`
+	Answered int       `json:"answered"`
+}
+
+type StatsResponse struct {
+	User           *UserData `json:"user"`
+	TotalQuestions int       `json:"total_questions"`
+	Progress       float64   `json:"progress"`
+}
+
+type LeaderboardEntry struct {
+	ID        string `json:"id"`
+	Level     int    `json:"level"`
+	TotalEXP  int    `json:"total_exp"`
+	Correct   int    `json:"correct"`
+}
+
+type LeaderboardResponse struct {
+	Entries []LeaderboardEntry `json:"entries"`
+}
+
+// глобальные переменные
+var (
+	questions     []Question
+	users         = make(map[string]*UserData)
+	sessions      = make(map[string]*Session)
+	usersMu       sync.RWMutex
+	sessionsMu    sync.RWMutex
+	questionsFile = "questions.json"
+	dataFile      = "users.json"
+)
+
+func main() {
+	rand.Seed(time.Now().UnixNano())
+
+	// Загружаем вопросы
+	if err := loadQuestions(); err != nil {
+		log.Fatal("Ошибка загрузки вопросов:", err)
+	}
+	log.Printf("Загружено %d вопросов", len(questions))
+
+	// Загружаем сохранённые данные пользователей
+	loadUserData()
+
+	// Автосохранение каждые 5 минут
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			saveUserData()
+		}
+	}()
+
+	// HTTP handlers
+	http.HandleFunc("/", homeHandler)
+	http.HandleFunc("/api/quiz", quizHandler)
+	http.HandleFunc("/api/answer", answerHandler)
+	http.HandleFunc("/api/stats", statsHandler)
+	http.HandleFunc("/api/leaderboard", leaderboardHandler)
+	http.HandleFunc("/api/reset", resetHandler)
+
+	port := ":8080"
+	fmt.Printf("🚀 Go Quiz Web Server starting on http://localhost%s\n", port)
+	log.Fatal(http.ListenAndServe(port, nil))
+}
+
+// --- Загрузка/сохранение данных ---
+
+func loadQuestions() error {
+	data, err := os.ReadFile(questionsFile)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, &questions)
+}
+
+func loadUserData() {
+	data, err := os.ReadFile(dataFile)
+	if err != nil {
+		log.Println("Файл пользователей не найден, начинаем с пустой статистикой")
+		return
+	}
+	err = json.Unmarshal(data, &users)
+	if err != nil {
+		log.Println("Ошибка парсинга users.json, используем пустую статистику")
 	}
 }
 
-var tmpl = template.Must(template.New("time").Parse(`
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Current Time</title>
-    <style>
-        * {
-            -webkit-tap-highlight-color: transparent;
-            box-sizing: border-box;
-        }
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            background: linear-gradient(135deg, #1a1a2e, #16213e);
-            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-            transition: background 0.3s ease;
-            overflow-x: hidden;
-        }
-        body.light-theme {
-            background: linear-gradient(135deg, #f5f5f5, #e0e0e0);
-        }
-        .clock {
-            text-align: center;
-            color: #00d9ff;
-            text-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
-            transition: color 0.3s ease, text-shadow 0.3s ease;
-            padding: 20px;
-        }
-        body.light-theme .clock {
-            color: #333;
-            text-shadow: none;
-        }
-        .time {
-            font-size: 5rem;
-            font-weight: bold;
-            letter-spacing: 0.2rem;
-            user-select: none;
-            -webkit-user-select: none;
-        }
-        .label {
-            font-size: 1.2rem;
-            color: #888;
-            margin-top: 1rem;
-            font-weight: 300;
-        }
-        body.light-theme .label {
-            color: #555;
-        }
-        .date-display {
-            font-size: 1.5rem;
-            color: #00d9ff;
-            text-shadow: 0 0 15px rgba(0, 217, 255, 0.4);
-            margin-top: 0.5rem;
-            font-weight: 300;
-            transition: all 0.3s ease;
-            opacity: 0;
-            transform: translateY(20px);
-        }
-        body.light-theme .date-display {
-            color: #333;
-            text-shadow: none;
-        }
-        .date-display.visible {
-            opacity: 1;
-            transform: translateY(0);
-        }
-        .date-btn {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid #00d9ff;
-            border-radius: 25px;
-            padding: 10px 20px;
-            cursor: pointer;
-            color: #00d9ff;
-            font-size: 0.9rem;
-            transition: all 0.3s ease;
-            z-index: 100;
-            -webkit-tap-highlight-color: transparent;
-            white-space: nowrap;
-        }
-        body.light-theme .date-btn {
-            background: rgba(0, 0, 0, 0.1);
-            border-color: #333;
-            color: #333;
-        }
-        .date-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
-            transform: scale(1.05);
-            box-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
-        }
-        body.light-theme .date-btn:hover {
-            background: rgba(0, 0, 0, 0.15);
-        }
-        .date-btn:active {
-            transform: scale(0.95);
-        }
-        .holidays-btn {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid #00d9ff;
-            border-radius: 25px;
-            padding: 10px 20px;
-            cursor: pointer;
-            color: #00d9ff;
-            font-size: 0.9rem;
-            transition: all 0.3s ease;
-            z-index: 100;
-            -webkit-tap-highlight-color: transparent;
-            white-space: nowrap;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        body.light-theme .holidays-btn {
-            background: rgba(0, 0, 0, 0.1);
-            border-color: #333;
-            color: #333;
-        }
-        .holidays-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
-            transform: scale(1.05);
-            box-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
-        }
-        body.light-theme .holidays-btn:hover {
-            background: rgba(0, 0, 0, 0.15);
-        }
-        .holidays-btn:active {
-            transform: scale(0.95);
-        }
-        .theme-toggle {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid #00d9ff;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-            z-index: 100;
-            -webkit-tap-highlight-color: transparent;
-        }
-        body.light-theme .theme-toggle {
-            background: rgba(0, 0, 0, 0.1);
-            border-color: #333;
-        }
-        .theme-toggle:hover {
-            transform: scale(1.1);
-            background: rgba(255, 255, 255, 0.2);
-        }
-        body.light-theme .theme-toggle:hover {
-            background: rgba(0, 0, 0, 0.15);
-        }
-        .theme-toggle:active {
-            transform: scale(0.95);
-        }
-        .theme-toggle span {
-            font-size: 1.5rem;
-        }
-        #date {
-            transition: color 0.3s ease;
-            text-align: center;
-            padding: 10px;
-        }
-        .bubble-btn {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid #00d9ff;
-            border-radius: 25px;
-            padding: 10px 20px;
-            cursor: pointer;
-            color: #00d9ff;
-            font-size: 0.9rem;
-            transition: all 0.3s ease;
-            z-index: 100;
-            -webkit-tap-highlight-color: transparent;
-            white-space: nowrap;
-        }
-        body.light-theme .bubble-btn {
-            background: rgba(0, 0, 0, 0.1);
-            border-color: #333;
-            color: #333;
-        }
-        .bubble-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
-            transform: scale(1.05);
-        }
-        body.light-theme .bubble-btn:hover {
-            background: rgba(0, 0, 0, 0.15);
-        }
-        .bubble-btn:active {
-            transform: scale(0.95);
-        }
-        .bubble {
-            position: absolute;
-            border-radius: 50%;
-            background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.8), rgba(0, 217, 255, 0.4));
-            box-shadow: 0 0 10px rgba(0, 217, 255, 0.3);
-            cursor: pointer;
-            animation: float 3s ease-in-out infinite;
-            transition: transform 0.1s ease;
-            user-select: none;
-            -webkit-user-select: none;
-        }
-        body.light-theme .bubble {
-            background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.9), rgba(100, 150, 200, 0.5));
-            box-shadow: 0 0 10px rgba(100, 150, 200, 0.4);
-        }
-        .bubble:hover {
-            transform: scale(1.1);
-        }
-        .bubble:active {
-            transform: scale(0.9);
-        }
-        .bubble.pop {
-            animation: pop 0.2s ease-out forwards;
-        }
-        .droplet {
-            position: absolute;
-            border-radius: 50%;
-            background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.9), rgba(0, 217, 255, 0.5));
-            box-shadow: 0 0 8px rgba(0, 217, 255, 0.4);
-            pointer-events: none;
-            user-select: none;
-            -webkit-user-select: none;
-        }
-        @keyframes float {
-            0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-20px); }
-        }
-        @keyframes pop {
-            0% { transform: scale(1); opacity: 1; }
-            100% { transform: scale(1.5); opacity: 0; }
-        }
-        #bubbles-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            overflow: hidden;
-            z-index: 1;
-        }
-        #bubbles-container .bubble {
-            pointer-events: auto;
-        }
-        /* Material Design Breakpoints - Mobile First */
-        @media (max-width: 480px) {
-            .time {
-                font-size: 2.5rem;
-                letter-spacing: 0.1rem;
-            }
-            .label {
-                font-size: 0.9rem;
-            }
-            .theme-toggle {
-                top: 10px;
-                right: 10px;
-                width: 44px;
-                height: 44px;
-            }
-            .theme-toggle span {
-                font-size: 1.2rem;
-            }
-            .bubble-btn {
-                top: 10px;
-                left: 10px;
-                padding: 8px 14px;
-                font-size: 0.75rem;
-            }
-            .date-btn {
-                bottom: 10px;
-                right: 10px;
-                padding: 8px 14px;
-                font-size: 0.75rem;
-            }
-            .holidays-btn {
-                bottom: 10px;
-                left: 10px;
-                padding: 8px 14px;
-                font-size: 0.75rem;
-            }
-            #date {
-                bottom: 10px;
-                right: 10px;
-                left: 10px;
-                font-size: 0.75rem;
-            }
-            .clock {
-                padding: 15px;
-            }
-        }
-        @media (min-width: 481px) and (max-width: 768px) {
-            .time {
-                font-size: 3.5rem;
-                letter-spacing: 0.15rem;
-            }
-            .label {
-                font-size: 1rem;
-            }
-            .theme-toggle {
-                width: 48px;
-                height: 48px;
-            }
-            .theme-toggle span {
-                font-size: 1.3rem;
-            }
-            .bubble-btn {
-                padding: 9px 16px;
-                font-size: 0.8rem;
-            }
-            #date {
-                font-size: 0.85rem;
-            }
-        }
-        @media (min-width: 769px) and (max-width: 1024px) {
-            .time {
-                font-size: 4rem;
-            }
-            .label {
-                font-size: 1.1rem;
-            }
-        }
-        /* Landscape orientation on mobile */
-        @media (max-height: 500px) and (orientation: landscape) {
-            .time {
-                font-size: 3rem;
-            }
-            .label {
-                font-size: 0.85rem;
-            }
-            .theme-toggle {
-                top: 5px;
-                right: 5px;
-            }
-            .bubble-btn {
-                top: 5px;
-                left: 5px;
-                padding: 6px 12px;
-                font-size: 0.7rem;
-            }
-        }
-        /* Touch device optimizations */
-        @media (hover: none) and (pointer: coarse) {
-            .theme-toggle,
-            .bubble-btn {
-                min-width: 48px;
-                min-height: 48px;
-            }
-            .bubble {
-                min-width: 40px;
-                min-height: 40px;
-            }
-        }
-    </style>
-</head>
-<body>
-    <button class="bubble-btn" onclick="toggleBubbles()">🫧 Активировать пузырьки</button>
-    <button class="theme-toggle" onclick="toggleTheme()" title="Переключить тему">
-        <span id="theme-icon">☀️</span>
-    </button>
-    <button class="date-btn" onclick="toggleDateDisplay()">📅 Показать дату</button>
-    <a href="/holidays" class="holidays-btn">🎉 Какой праздник сегодня</a>
-    <div id="bubbles-container"></div>
-    <div class="clock">
-        <div class="time" id="time">{{ .Time }}</div>
-        <div class="label">Московское время сейчас</div>
-        <div class="date-display" id="date"></div>
-    </div>
-    <script>
-        let bubblesActive = false;
-        let bubblesInterval = null;
-        
-        function toggleBubbles() {
-            const btn = document.querySelector('.bubble-btn');
-            if (bubblesActive) {
-                bubblesActive = false;
-                btn.textContent = '🫧 Активировать пузырьки';
-                clearInterval(bubblesInterval);
-                // Remove all bubbles
-                const container = document.getElementById('bubbles-container');
-                container.innerHTML = '';
-            } else {
-                bubblesActive = true;
-                btn.textContent = '🫧 Отключить пузырьки';
-                createBubble();
-                bubblesInterval = setInterval(createBubble, 500);
-            }
-        }
-        
-        function createBubble() {
-            const container = document.getElementById('bubbles-container');
-            const bubble = document.createElement('div');
-            bubble.className = 'bubble';
-            
-            // Random size between 20 and 60px
-            const size = Math.random() * 40 + 20;
-            bubble.style.width = size + 'px';
-            bubble.style.height = size + 'px';
-            
-            // Random position
-            bubble.style.left = Math.random() * window.innerWidth + 'px';
-            bubble.style.top = Math.random() * window.innerHeight + 'px';
-            
-            // Random animation delay
-            bubble.style.animationDelay = Math.random() * 2 + 's';
-            
-            // Pop on click
-            bubble.onclick = function() {
-                createDroplets(bubble);
-                bubble.classList.add('pop');
-                setTimeout(() => bubble.remove(), 200);
-            };
-            
-            // Remove bubble after 10 seconds
-            setTimeout(() => {
-                if (bubble.parentNode) {
-                    bubble.style.transition = 'opacity 1s ease';
-                    bubble.style.opacity = '0';
-                    setTimeout(() => bubble.remove(), 1000);
-                }
-            }, 10000);
-            
-            container.appendChild(bubble);
-        }
+func saveUserData() {
+	usersMu.RLock()
+	defer usersMu.RUnlock()
+	
+	data, _ := json.MarshalIndent(users, "", "  ")
+	if err := os.WriteFile(dataFile, data, 0644); err != nil {
+		log.Println("Ошибка сохранения данных пользователей:", err)
+	} else {
+		log.Println("Данные пользователей сохранены")
+	}
+}
 
-        function createDroplets(bubble) {
-            const container = document.getElementById('bubbles-container');
-            const bubbleRect = bubble.getBoundingClientRect();
-            const centerX = bubbleRect.left + bubbleRect.width / 2;
-            const centerY = bubbleRect.top + bubbleRect.height / 2;
-            const numDroplets = Math.floor(Math.random() * 6) + 8;
+// --- Работа с пользователями ---
 
-            for (let i = 0; i < numDroplets; i++) {
-                const droplet = document.createElement('div');
-                droplet.className = 'droplet';
+func getUser(userID string) *UserData {
+	usersMu.Lock()
+	defer usersMu.Unlock()
+	
+	if _, ok := users[userID]; !ok {
+		users[userID] = &UserData{
+			ID:             userID,
+			TotalEXP:       0,
+			CorrectAnswers: 0,
+			WrongAnswers:   0,
+			Level:          1,
+			AskedQuestions: []int{},
+			CreatedAt:      time.Now(),
+		}
+	}
+	return users[userID]
+}
 
-                const size = Math.random() * 8 + 4;
-                droplet.style.width = size + 'px';
-                droplet.style.height = size + 'px';
-                droplet.style.left = centerX + 'px';
-                droplet.style.top = centerY + 'px';
+func updateLevel(user *UserData) {
+	newLevel := int(math.Floor(float64(user.TotalEXP)/100)) + 1
+	if newLevel > user.Level {
+		user.Level = newLevel
+	}
+}
 
-                const angle = (Math.PI * 2 * i) / numDroplets + Math.random() * 0.5;
-                const velocity = Math.random() * 60 + 40;
-                const deltaX = Math.cos(angle) * velocity;
-                const deltaY = Math.sin(angle) * velocity;
+// --- Handlers ---
 
-                droplet.style.transition = 'all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-                container.appendChild(droplet);
-
-                requestAnimationFrame(() => {
-                    droplet.style.transform = 'translate(' + deltaX + 'px, ' + deltaY + 'px)';
-                    droplet.style.opacity = '0';
-                });
-
-                setTimeout(() => droplet.remove(), 600);
-            }
-        }
-
-        function toggleTheme() {
-            document.body.classList.toggle('light-theme');
-            const icon = document.getElementById('theme-icon');
-            if (document.body.classList.contains('light-theme')) {
-                icon.textContent = '🌙';
-                localStorage.setItem('theme', 'light');
-            } else {
-                icon.textContent = '☀️';
-                localStorage.setItem('theme', 'dark');
-            }
-        }
-        // Load saved theme on page load
-        const savedTheme = localStorage.getItem('theme');
-        if (savedTheme === 'light') {
-            document.body.classList.add('light-theme');
-            document.getElementById('theme-icon').textContent = '🌙';
-        }
-        let dateVisible = false;
-        function toggleDateDisplay() {
-            dateVisible = !dateVisible;
-            const btn = document.querySelector('.date-btn');
-            const dateEl = document.getElementById('date');
-            if (dateVisible) {
-                btn.textContent = '📅 Скрыть дату';
-                dateEl.classList.add('visible');
-                updateDate();
-            } else {
-                btn.textContent = '📅 Показать дату';
-                dateEl.classList.remove('visible');
-            }
-        }
-        function updateTime() {
-            const now = new Date();
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            document.getElementById('time').textContent = hours + '-' + minutes + '-' + seconds;
-        }
-        setInterval(updateTime, 1000);
-
-        function updateDate() {
-            const now = new Date();
-            const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
-            const dayNum = now.getDate();
-            const monthName = months[now.getMonth()];
-            const year = now.getFullYear();
-            document.getElementById('date').textContent = 'сегодня ' + dayNum + ' ' + monthName + ' ' + year + ' года';
-        }
-        updateDate();
-        setInterval(updateDate, 1000);
-    </script>
-</body>
-</html>
-`))
-
-var holidaysTmpl = template.Must(template.New("holidays").Parse(`
+var tmpl = template.Must(template.New("index").Parse(`
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Праздники сегодня</title>
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+    <title>Go Quiz - Викторина по языку Go</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -573,310 +201,530 @@ var holidaysTmpl = template.Must(template.New("holidays").Parse(`
             box-sizing: border-box;
         }
         body {
-            font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-family: 'Montserrat', sans-serif;
             min-height: 100vh;
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
             color: #fff;
-            padding: 20px;
-            transition: background 0.3s ease, color 0.3s ease;
+            transition: background 0.3s ease;
         }
         body.light-theme {
             background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 50%, #e8eaf6 100%);
             color: #333;
         }
         .container {
-            max-width: 800px;
+            max-width: 900px;
             margin: 0 auto;
-            padding-top: 20px;
+            padding: 20px;
         }
-        .header {
-            text-align: center;
-            margin-bottom: 40px;
-            animation: slideDown 0.5s ease-out;
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            margin-bottom: 30px;
         }
-        .header h1 {
-            font-family: 'Montserrat', sans-serif;
-            font-size: 2.5rem;
+        body.light-theme header {
+            border-bottom-color: rgba(0,0,0,0.1);
+        }
+        .logo {
+            font-size: 1.8rem;
             font-weight: 700;
-            margin-bottom: 10px;
             background: linear-gradient(135deg, #00d9ff, #00ff88);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
-        body.light-theme .header h1 {
+        body.light-theme .logo {
             background: linear-gradient(135deg, #1a1a2e, #0f3460);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
-        .header .date {
-            font-size: 1.2rem;
-            color: #888;
-            font-weight: 400;
+        .header-actions {
+            display: flex;
+            gap: 15px;
+            align-items: center;
         }
-        body.light-theme .header .date {
+        .theme-toggle, .nav-btn {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid #00d9ff;
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            font-size: 1.2rem;
+        }
+        body.light-theme .theme-toggle,
+        body.light-theme .nav-btn {
+            background: rgba(0,0,0,0.1);
+            border-color: #333;
+        }
+        .nav-btn {
+            border-radius: 25px;
+            width: auto;
+            padding: 0 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        .theme-toggle:hover, .nav-btn:hover {
+            transform: scale(1.1);
+            background: rgba(255,255,255,0.2);
+        }
+        body.light-theme .theme-toggle:hover,
+        body.light-theme .nav-btn:hover {
+            background: rgba(0,0,0,0.15);
+        }
+        .nav-btn.active {
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            border-color: transparent;
+            color: #1a1a2e;
+        }
+        /* Main Content */
+        .main-content {
+            min-height: 60vh;
+        }
+        .page {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+        .page.active {
+            display: block;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        /* Home Page */
+        .hero {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        .hero h1 {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        body.light-theme .hero h1 {
+            background: linear-gradient(135deg, #1a1a2e, #0f3460);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .hero p {
+            font-size: 1.2rem;
+            color: #aaa;
+            margin-bottom: 40px;
+        }
+        body.light-theme .hero p {
             color: #555;
         }
-        .holidays-list {
+        .start-btn {
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            border: none;
+            border-radius: 50px;
+            padding: 18px 50px;
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #1a1a2e;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(0,217,255,0.3);
+        }
+        .start-btn:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,217,255,0.5);
+        }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 30px;
+            margin-top: 60px;
+        }
+        .feature-card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        body.light-theme .feature-card {
+            background: rgba(255,255,255,0.8);
+            border-color: rgba(0,0,0,0.1);
+        }
+        .feature-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+        .feature-card h3 {
+            margin-bottom: 10px;
+        }
+        /* Quiz Page */
+        .quiz-container {
+            background: rgba(255,255,255,0.05);
+            border-radius: 20px;
+            padding: 40px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        body.light-theme .quiz-container {
+            background: rgba(255,255,255,0.8);
+            border-color: rgba(0,0,0,0.1);
+        }
+        .quiz-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+            font-size: 0.9rem;
+            color: #888;
+        }
+        body.light-theme .quiz-header {
+            color: #555;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 30px;
+        }
+        body.light-theme .progress-bar {
+            background: rgba(0,0,0,0.1);
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            transition: width 0.3s ease;
+        }
+        .question-text {
+            font-size: 1.4rem;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        .options {
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 15px;
         }
-        .holiday-card {
-            background: rgba(255, 255, 255, 0.05);
+        .option-btn {
+            background: rgba(255,255,255,0.05);
+            border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 15px;
+            padding: 18px 25px;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1rem;
+            color: inherit;
+        }
+        body.light-theme .option-btn {
+            background: rgba(0,0,0,0.05);
+            border-color: rgba(0,0,0,0.2);
+        }
+        .option-btn:hover {
+            border-color: #00d9ff;
+            background: rgba(0,217,255,0.1);
+            transform: translateX(10px);
+        }
+        .option-btn.correct {
+            background: rgba(0,255,136,0.2);
+            border-color: #00ff88;
+        }
+        .option-btn.wrong {
+            background: rgba(255,71,87,0.2);
+            border-color: #ff4757;
+        }
+        .option-btn.disabled {
+            pointer-events: none;
+            opacity: 0.6;
+        }
+        .quiz-footer {
+            margin-top: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .exp-badge {
+            background: linear-gradient(135deg, #ffd700, #ffaa00);
+            color: #1a1a2e;
+            padding: 8px 20px;
+            border-radius: 25px;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+        .next-btn {
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            border: none;
+            border-radius: 25px;
+            padding: 12px 35px;
+            font-size: 1rem;
+            font-weight: 700;
+            color: #1a1a2e;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: none;
+        }
+        .next-btn:hover {
+            transform: scale(1.05);
+        }
+        .next-btn.visible {
+            display: block;
+        }
+        /* Stats Page */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        .stat-card {
+            background: rgba(255,255,255,0.05);
             border-radius: 20px;
             padding: 25px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            transition: all 0.3s ease;
-            animation: fadeInUp 0.5s ease-out backwards;
-            cursor: pointer;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.1);
         }
-        body.light-theme .holiday-card {
-            background: rgba(255, 255, 255, 0.8);
-            border-color: rgba(0, 0, 0, 0.1);
+        body.light-theme .stat-card {
+            background: rgba(255,255,255,0.8);
+            border-color: rgba(0,0,0,0.1);
         }
-        .holiday-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 30px rgba(0, 217, 255, 0.3);
-            border-color: #00d9ff;
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
-        body.light-theme .holiday-card:hover {
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        body.light-theme .stat-value {
+            background: linear-gradient(135deg, #1a1a2e, #0f3460);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
-        .holiday-card:nth-child(1) { animation-delay: 0.1s; }
-        .holiday-card:nth-child(2) { animation-delay: 0.15s; }
-        .holiday-card:nth-child(3) { animation-delay: 0.2s; }
-        .holiday-card:nth-child(4) { animation-delay: 0.25s; }
-        .holiday-card:nth-child(5) { animation-delay: 0.3s; }
-        .holiday-name {
-            font-family: 'Montserrat', sans-serif;
-            font-size: 1.3rem;
-            font-weight: 600;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+        .stat-label {
+            color: #888;
+            margin-top: 10px;
         }
-        .holiday-type {
-            font-size: 0.75rem;
-            padding: 4px 12px;
-            border-radius: 20px;
-            text-transform: uppercase;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-        }
-        .type-international {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: #fff;
-        }
-        .type-national {
-            background: linear-gradient(135deg, #f093fb, #f5576c);
-            color: #fff;
-        }
-        .type-professional {
-            background: linear-gradient(135deg, #4facfe, #00f2fe);
-            color: #fff;
-        }
-        .type-cultural {
-            background: linear-gradient(135deg, #fa709a, #fee140);
-            color: #fff;
-        }
-        .type-religious {
-            background: linear-gradient(135deg, #a8edea, #fed6e3);
-            color: #333;
-        }
-        .holiday-description {
-            font-size: 0.95rem;
-            line-height: 1.6;
-            color: #aaa;
-        }
-        body.light-theme .holiday-description {
+        body.light-theme .stat-label {
             color: #555;
         }
-        .back-btn {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid #00d9ff;
+        /* Leaderboard */
+        .leaderboard-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: rgba(255,255,255,0.05);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+        body.light-theme .leaderboard-table {
+            background: rgba(255,255,255,0.8);
+        }
+        .leaderboard-table th,
+        .leaderboard-table td {
+            padding: 18px 25px;
+            text-align: left;
+        }
+        .leaderboard-table th {
+            background: rgba(0,217,255,0.2);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 1px;
+        }
+        .leaderboard-table tr:not(:last-child) {
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        body.light-theme .leaderboard-table tr:not(:last-child) {
+            border-bottom-color: rgba(0,0,0,0.1);
+        }
+        .rank-1 { background: linear-gradient(90deg, rgba(255,215,0,0.2), transparent); }
+        .rank-2 { background: linear-gradient(90deg, rgba(192,192,192,0.2), transparent); }
+        .rank-3 { background: linear-gradient(90deg, rgba(205,127,50,0.2), transparent); }
+        .rank-badge {
+            display: inline-block;
+            width: 35px;
+            height: 35px;
+            line-height: 35px;
+            text-align: center;
             border-radius: 50%;
-            width: 50px;
-            height: 50px;
+            background: rgba(255,255,255,0.1);
+            font-weight: 700;
+        }
+        .rank-1 .rank-badge { background: linear-gradient(135deg, #ffd700, #ffaa00); color: #1a1a2e; }
+        .rank-2 .rank-badge { background: linear-gradient(135deg, #c0c0c0, #a0a0a0); color: #1a1a2e; }
+        .rank-3 .rank-badge { background: linear-gradient(135deg, #cd7f32, #b87333); color: #fff; }
+        /* Reset button */
+        .reset-section {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        body.light-theme .reset-section {
+            border-top-color: rgba(0,0,0,0.1);
+        }
+        .reset-btn {
+            background: rgba(255,71,87,0.2);
+            border: 2px solid #ff4757;
+            color: #ff4757;
+            border-radius: 25px;
+            padding: 12px 35px;
             cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             transition: all 0.3s ease;
-            z-index: 100;
-            text-decoration: none;
-            -webkit-tap-highlight-color: transparent;
+            font-size: 0.9rem;
         }
-        body.light-theme .back-btn {
-            background: rgba(0, 0, 0, 0.1);
-            border-color: #333;
+        .reset-btn:hover {
+            background: rgba(255,71,87,0.3);
+            transform: scale(1.05);
         }
-        .back-btn:hover {
-            transform: scale(1.1) rotate(-10deg);
-            background: rgba(255, 255, 255, 0.2);
-        }
-        body.light-theme .back-btn:hover {
-            background: rgba(0, 0, 0, 0.15);
-        }
-        .back-btn:active {
-            transform: scale(0.95);
-        }
-        .back-btn span {
-            font-size: 1.5rem;
-            color: #00d9ff;
-        }
-        body.light-theme .back-btn span {
-            color: #333;
-        }
-        .theme-toggle {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid #00d9ff;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-            z-index: 100;
-            -webkit-tap-highlight-color: transparent;
-        }
-        body.light-theme .theme-toggle {
-            background: rgba(0, 0, 0, 0.1);
-            border-color: #333;
-        }
-        .theme-toggle:hover {
-            transform: scale(1.1);
-            background: rgba(255, 255, 255, 0.2);
-        }
-        body.light-theme .theme-toggle:hover {
-            background: rgba(0, 0, 0, 0.15);
-        }
-        .theme-toggle:active {
-            transform: scale(0.95);
-        }
-        .theme-toggle span {
-            font-size: 1.5rem;
-        }
-        @keyframes slideDown {
-            from {
-                opacity: 0;
-                transform: translateY(-30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        /* Mobile First - Responsive Design */
-        @media (max-width: 480px) {
-            body {
-                padding: 15px;
-            }
-            .header h1 {
-                font-size: 1.8rem;
-            }
-            .header .date {
-                font-size: 1rem;
-            }
-            .holiday-card {
-                padding: 20px;
-            }
-            .holiday-name {
-                font-size: 1.1rem;
-            }
-            .holiday-description {
-                font-size: 0.9rem;
-            }
-            .back-btn,
-            .theme-toggle {
-                width: 44px;
-                height: 44px;
-                top: 10px;
-            }
-            .back-btn {
-                left: 10px;
-            }
-            .theme-toggle {
-                right: 10px;
-            }
-        }
-        @media (min-width: 481px) and (max-width: 768px) {
-            .header h1 {
-                font-size: 2rem;
-            }
-            .holiday-name {
-                font-size: 1.2rem;
-            }
-        }
-        @media (min-width: 769px) {
-            .container {
-                padding-top: 40px;
-            }
-            .header h1 {
-                font-size: 3rem;
-            }
-        }
-        /* Touch device optimizations */
-        @media (hover: none) and (pointer: coarse) {
-            .back-btn,
-            .theme-toggle {
-                min-width: 48px;
-                min-height: 48px;
-            }
-            .holiday-card {
-                min-height: 80px;
-            }
+        /* Mobile */
+        @media (max-width: 600px) {
+            .hero h1 { font-size: 2rem; }
+            .quiz-container { padding: 25px; }
+            .question-text { font-size: 1.1rem; }
+            .option-btn { padding: 15px 18px; }
+            header { flex-direction: column; gap: 15px; }
+            .leaderboard-table th,
+            .leaderboard-table td { padding: 12px 15px; font-size: 0.85rem; }
         }
     </style>
 </head>
 <body>
-    <a href="/" class="back-btn" title="На главную">
-        <span>←</span>
-    </a>
-    <button class="theme-toggle" onclick="toggleTheme()" title="Переключить тему">
-        <span id="theme-icon">☀️</span>
-    </button>
     <div class="container">
-        <div class="header">
-            <h1>🎉 Праздники сегодня</h1>
-            <p class="date">{{ .Date }}</p>
-        </div>
-        <div class="holidays-list">
-            {{ range .Holidays }}
-            <div class="holiday-card">
-                <div class="holiday-name">
-                    {{ .Name }}
-                    <span class="holiday-type type-{{ .Type }}">{{ .Type }}</span>
-                </div>
-                <p class="holiday-description">{{ .Description }}</p>
+        <header>
+            <div class="logo">🧠 Go Quiz</div>
+            <div class="header-actions">
+                <button class="nav-btn" onclick="showPage('home')">🏠 Главная</button>
+                <button class="nav-btn" onclick="showPage('quiz')">🎯 Викторина</button>
+                <button class="nav-btn" onclick="showPage('stats')">📊 Статистика</button>
+                <button class="nav-btn" onclick="showPage('leaderboard')">🏆 Лидеры</button>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Переключить тему">
+                    <span id="theme-icon">☀️</span>
+                </button>
             </div>
-            {{ end }}
-        </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Home Page -->
+            <div id="home" class="page active">
+                <div class="hero">
+                    <h1>Проверь свои знания Go</h1>
+                    <p>Интерактивная викторина по языку программирования Go.<br>
+                    Отвечай на вопросы, получай EXP и соревнуйся с другими!</p>
+                    <button class="start-btn" onclick="startQuiz()">🚀 Начать викторину</button>
+                </div>
+                <div class="features">
+                    <div class="feature-card">
+                        <div class="feature-icon">📚</div>
+                        <h3>{{.TotalQuestions}} вопросов</h3>
+                        <p>Разные темы и уровни сложности</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🎮</div>
+                        <h3>Геймификация</h3>
+                        <p>EXP, уровни и таблица лидеров</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">💾</div>
+                        <h3>Сохранение</h3>
+                        <p>Прогресс сохраняется автоматически</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quiz Page -->
+            <div id="quiz" class="page">
+                <div class="quiz-container">
+                    <div class="quiz-header">
+                        <span id="question-counter">Вопрос 1 из {{.TotalQuestions}}</span>
+                        <span id="level-display">Уровень 1</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="question-text" id="question-text">Загрузка вопроса...</div>
+                    <div class="options" id="options-container">
+                        <!-- Options will be inserted here -->
+                    </div>
+                    <div class="quiz-footer">
+                        <div class="exp-badge" id="exp-display">EXP: 0</div>
+                        <button class="next-btn" id="next-btn" onclick="nextQuestion()">Следующий вопрос →</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Page -->
+            <div id="stats" class="page">
+                <h2 style="margin-bottom: 30px; text-align: center;">📊 Твоя статистика</h2>
+                <div class="stats-grid" id="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-level">-</div>
+                        <div class="stat-label">Уровень</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-exp">-</div>
+                        <div class="stat-label">Всего EXP</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-correct">-</div>
+                        <div class="stat-label">Правильных</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-wrong">-</div>
+                        <div class="stat-label">Неправильных</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-progress">-</div>
+                        <div class="stat-label">Прогресс</div>
+                    </div>
+                </div>
+                <div class="reset-section">
+                    <button class="reset-btn" onclick="resetProgress()">🔄 Сбросить прогресс</button>
+                </div>
+            </div>
+
+            <!-- Leaderboard Page -->
+            <div id="leaderboard" class="page">
+                <h2 style="margin-bottom: 30px; text-align: center;">🏆 Таблица лидеров</h2>
+                <table class="leaderboard-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Игрок</th>
+                            <th>Уровень</th>
+                            <th>EXP</th>
+                            <th>Правильных</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-body">
+                        <!-- Leaderboard entries will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </main>
     </div>
+
     <script>
-        // Load saved theme
-        const savedTheme = localStorage.getItem('holidays-theme');
+        // User ID stored in localStorage
+        let userId = localStorage.getItem('goquiz_user_id');
+        if (!userId) {
+            userId = 'user_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('goquiz_user_id', userId);
+        }
+
+        let currentQuestion = null;
+        let answered = false;
+
+        // Theme toggle
+        const savedTheme = localStorage.getItem('goquiz_theme');
         if (savedTheme === 'light') {
             document.body.classList.add('light-theme');
             document.getElementById('theme-icon').textContent = '🌙';
@@ -887,27 +735,215 @@ var holidaysTmpl = template.Must(template.New("holidays").Parse(`
             const icon = document.getElementById('theme-icon');
             if (document.body.classList.contains('light-theme')) {
                 icon.textContent = '🌙';
-                localStorage.setItem('holidays-theme', 'light');
+                localStorage.setItem('goquiz_theme', 'light');
             } else {
                 icon.textContent = '☀️';
-                localStorage.setItem('holidays-theme', 'dark');
+                localStorage.setItem('goquiz_theme', 'dark');
             }
         }
+
+        // Page navigation
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+            
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+
+            if (pageId === 'stats') loadStats();
+            if (pageId === 'leaderboard') loadLeaderboard();
+        }
+
+        // Start quiz
+        async function startQuiz() {
+            showPage('quiz');
+            document.querySelector('[onclick="showPage(\'quiz\')"]').classList.add('active');
+            await loadQuestion();
+        }
+
+        // Load question
+        async function loadQuestion() {
+            answered = false;
+            document.getElementById('next-btn').classList.remove('visible');
+            document.getElementById('options-container').innerHTML = '<p style="text-align:center;color:#888;">Загрузка...</p>';
+
+            try {
+                const res = await fetch('/api/quiz');
+                const data = await res.json();
+                
+                if (!data.question) {
+                    document.getElementById('question-text').textContent = '🎉 Вы ответили на все вопросы!';
+                    document.getElementById('options-container').innerHTML = '';
+                    document.getElementById('next-btn').classList.add('visible');
+                    document.getElementById('next-btn').onclick = () => { showPage('home'); };
+                    return;
+                }
+
+                currentQuestion = data.question;
+                document.getElementById('question-text').textContent = currentQuestion.Question;
+                document.getElementById('question-counter').textContent =
+                    'Вопрос ' + (data.answered + 1) + ' из ' + data.total;
+                document.getElementById('progress-fill').style.width =
+                    ((data.answered / data.total) * 100) + '%';
+
+                // Render options
+                const container = document.getElementById('options-container');
+                container.innerHTML = '';
+                currentQuestion.Options.forEach((opt, idx) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'option-btn';
+                    btn.textContent = opt;
+                    btn.onclick = () => selectAnswer(idx, btn);
+                    container.appendChild(btn);
+                });
+
+                // Update level display
+                await updateStatsDisplay();
+            } catch (err) {
+                console.error('Error loading question:', err);
+                document.getElementById('question-text').textContent = 'Ошибка загрузки вопроса';
+            }
+        }
+
+        // Select answer
+        async function selectAnswer(optionIndex, btn) {
+            if (answered) return;
+            answered = true;
+
+            // Disable all buttons
+            document.querySelectorAll('.option-btn').forEach(b => b.classList.add('disabled'));
+
+            try {
+                const res = await fetch('/api/answer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        question_id: currentQuestion.ID,
+                        option_index: optionIndex
+                    })
+                });
+                const data = await res.json();
+
+                // Highlight correct/wrong
+                if (data.correct) {
+                    btn.classList.add('correct');
+                } else {
+                    btn.classList.add('wrong');
+                    // Highlight correct answer
+                    document.querySelectorAll('.option-btn')[data.correct_option].classList.add('correct');
+                }
+
+                // Update EXP display
+                document.getElementById('exp-display').textContent = 'EXP: ' + data.new_exp;
+                document.getElementById('level-display').textContent = 'Уровень ' + data.new_level;
+
+                // Show next button
+                document.getElementById('next-btn').classList.add('visible');
+            } catch (err) {
+                console.error('Error submitting answer:', err);
+            }
+        }
+
+        // Next question
+        function nextQuestion() {
+            loadQuestion();
+        }
+
+        // Update stats display
+        async function updateStatsDisplay() {
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+                if (data.user) {
+                    document.getElementById('level-display').textContent = 'Уровень ' + data.user.level;
+                    document.getElementById('exp-display').textContent = 'EXP: ' + data.user.total_exp;
+                }
+            } catch (err) {
+                console.error('Error updating stats:', err);
+            }
+        }
+
+        // Load stats
+        async function loadStats() {
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+                
+                if (data.user) {
+                    document.getElementById('stat-level').textContent = data.user.level;
+                    document.getElementById('stat-exp').textContent = data.user.total_exp;
+                    document.getElementById('stat-correct').textContent = data.user.correct_answers;
+                    document.getElementById('stat-wrong').textContent = data.user.wrong_answers;
+                    document.getElementById('stat-progress').textContent = 
+                        Math.round(data.progress) + '%';
+                }
+            } catch (err) {
+                console.error('Error loading stats:', err);
+            }
+        }
+
+        // Load leaderboard
+        async function loadLeaderboard() {
+            try {
+                const res = await fetch('/api/leaderboard');
+                const data = await res.json();
+                
+                const tbody = document.getElementById('leaderboard-body');
+                tbody.innerHTML = '';
+                
+                if (data.entries.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;">Пока нет игроков. Будь первым!</td></tr>';
+                    return;
+                }
+
+                data.entries.forEach((entry, idx) => {
+                    const tr = document.createElement('tr');
+                    tr.className = idx < 3 ? 'rank-' + (idx + 1) : '';
+                    tr.innerHTML = 
+                        '<td><span class="rank-badge">' + (idx + 1) + '</span></td>' +
+                        '<td>' + entry.id + '</td>' +
+                        '<td>' + entry.level + '</td>' +
+                        '<td>' + entry.total_exp + '</td>' +
+                        '<td>' + entry.correct + '</td>';
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.error('Error loading leaderboard:', err);
+            }
+        }
+
+        // Reset progress
+        async function resetProgress() {
+            if (!confirm('Вы уверены? Весь прогресс будет сброшен.')) return;
+
+            try {
+                await fetch('/api/reset', { method: 'POST' });
+                alert('Прогресс сброшен!');
+                loadStats();
+            } catch (err) {
+                console.error('Error resetting progress:', err);
+            }
+        }
+
+        // Initial stats update
+        updateStatsDisplay();
     </script>
 </body>
 </html>
 `))
 
-func timeHandler(w http.ResponseWriter, r *http.Request) {
-	now := time.Now()
-	timeStr := fmt.Sprintf("%02d-%02d-%02d", now.Hour(), now.Minute(), now.Second())
-
-	data := struct {
-		Time string
-	}{
-		Time: timeStr,
+func homeHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
 	}
-
+	
+	data := struct {
+		TotalQuestions int
+	}{
+		TotalQuestions: len(questions),
+	}
+	
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	err := tmpl.Execute(w, data)
 	if err != nil {
@@ -915,30 +951,196 @@ func timeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func main() {
-	http.HandleFunc("/", timeHandler)
-	http.HandleFunc("/holidays", holidaysHandler)
-
-	port := ":8080"
-	fmt.Printf("Starting server on http://localhost%s\n", port)
-	log.Fatal(http.ListenAndServe(port, nil))
+func getOrCreateUserID(r *http.Request) string {
+	cookie, err := r.Cookie("user_id")
+	if err == nil && cookie.Value != "" {
+		return cookie.Value
+	}
+	return fmt.Sprintf("user_%d", time.Now().UnixNano())
 }
 
-// holidaysHandler renders the holidays page
-func holidaysHandler(w http.ResponseWriter, r *http.Request) {
-	holidays := getHolidaysForMarch5()
-	
-	data := struct {
-		Holidays []Holiday
-		Date     string
-	}{
-		Holidays: holidays,
-		Date:     "5 марта",
+func quizHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	err := holidaysTmpl.Execute(w, data)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	userID := getOrCreateUserID(r)
+	user := getUser(userID)
+	
+	// Find available questions
+	askedMap := make(map[int]bool)
+	for _, id := range user.AskedQuestions {
+		askedMap[id] = true
 	}
+
+	var available []Question
+	for _, q := range questions {
+		if !askedMap[q.ID] {
+			available = append(available, q)
+		}
+	}
+
+	response := QuizResponse{
+		Total:    len(questions),
+		Answered: len(user.AskedQuestions),
+	}
+
+	if len(available) > 0 {
+		q := available[rand.Intn(len(available))]
+		response.Question = &q
+		
+		// Store current question in session
+		sessionsMu.Lock()
+		sessions[userID] = &Session{
+			UserID:    userID,
+			CurrentQ:  &q,
+			StartTime: time.Now(),
+		}
+		sessionsMu.Unlock()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func answerHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req AnswerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := getOrCreateUserID(r)
+	user := getUser(userID)
+
+	// Find question
+	var q *Question
+	for i := range questions {
+		if questions[i].ID == req.QuestionID {
+			q = &questions[i]
+			break
+		}
+	}
+	
+	if q == nil {
+		http.Error(w, "Question not found", http.StatusNotFound)
+		return
+	}
+
+	response := AnswerResponse{
+		CorrectOption: q.Correct,
+	}
+
+	if req.OptionIndex == q.Correct {
+		response.Correct = true
+		response.Exp = q.Exp
+		user.TotalEXP += q.Exp
+		user.CorrectAnswers++
+		response.Message = "✅ Правильно!"
+	} else {
+		response.Correct = false
+		user.WrongAnswers++
+		response.Message = "❌ Неправильно"
+	}
+
+	updateLevel(user)
+	response.NewExp = user.TotalEXP
+	response.NewLevel = user.Level
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func statsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID := getOrCreateUserID(r)
+	user := getUser(userID)
+	
+	response := StatsResponse{
+		User:           user,
+		TotalQuestions: len(questions),
+		Progress:       float64(len(user.AskedQuestions)) / float64(len(questions)) * 100,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func leaderboardHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	usersMu.RLock()
+	defer usersMu.RUnlock()
+
+	type kv struct {
+		ID   string
+		User *UserData
+	}
+	var list []kv
+	for id, u := range users {
+		list = append(list, kv{id, u})
+	}
+
+	// Sort by EXP descending
+	for i := 0; i < len(list); i++ {
+		for j := i + 1; j < len(list); j++ {
+			if list[j].User.TotalEXP > list[i].User.TotalEXP {
+				list[i], list[j] = list[j], list[i]
+			}
+		}
+	}
+
+	limit := 10
+	if len(list) < limit {
+		limit = len(list)
+	}
+
+	entries := make([]LeaderboardEntry, limit)
+	for i := 0; i < limit; i++ {
+		entries[i] = LeaderboardEntry{
+			ID:        list[i].ID,
+			Level:     list[i].User.Level,
+			TotalEXP:  list[i].User.TotalEXP,
+			Correct:   list[i].User.CorrectAnswers,
+		}
+	}
+
+	response := LeaderboardResponse{
+		Entries: entries,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func resetHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID := getOrCreateUserID(r)
+	user := getUser(userID)
+	user.AskedQuestions = []int{}
+
+	response := map[string]string{
+		"status": "ok",
+		"message": "Прогресс сброшен",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
