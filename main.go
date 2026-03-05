@@ -970,13 +970,13 @@ func getOrCreateUserID(w http.ResponseWriter, r *http.Request) string {
 	}
 
 	// Create new user ID and set cookie
-	userID = fmt.Sprintf("user_%d", time.Now().UnixNano())
+	var userID = fmt.Sprintf("user_%d", time.Now().UnixNano())
 	http.SetCookie(w, &http.Cookie{
 		Name:     "user_id",
 		Value:    userID,
 		Path:     "/",
 		MaxAge:   86400 * 365,
-		HttpOnly: false, // Allow JS to read
+		HttpOnly: false,
 	})
 	return userID
 }
