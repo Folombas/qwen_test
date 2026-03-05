@@ -698,6 +698,101 @@ var tmpl = template.Must(template.New("index").Parse(`
             .leaderboard-table th,
             .leaderboard-table td { padding: 12px 14px; font-size: 0.8rem; }
         }
+
+        /* Interview Prep Page */
+        .interview-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
+            margin-top: 24px;
+        }
+        @media (min-width: 768px) {
+            .interview-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        .qa-card {
+            background: var(--md-surface);
+            border-radius: 12px;
+            border: 1px solid var(--md-divider);
+            box-shadow: var(--elevation-2);
+            overflow: hidden;
+            transition: all var(--transition-standard);
+        }
+        .qa-card:hover {
+            box-shadow: var(--elevation-4);
+        }
+        .qa-question {
+            padding: 16px 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: var(--md-text-primary);
+            transition: background var(--transition-fast);
+            user-select: none;
+        }
+        .qa-question:hover {
+            background: rgba(128, 128, 128, 0.08);
+        }
+        .qa-question .qa-icon {
+            margin-left: auto;
+            font-size: 0.8rem;
+            transition: transform var(--transition-standard);
+            color: var(--md-text-secondary);
+        }
+        .qa-card.active .qa-icon {
+            transform: rotate(180deg);
+        }
+        .qa-answer {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height var(--transition-slow) ease-out;
+            background: rgba(128, 128, 128, 0.04);
+        }
+        .qa-card.active .qa-answer {
+            max-height: 1000px;
+        }
+        .qa-answer p, .qa-answer ul, .qa-answer ol {
+            padding: 16px 20px;
+            margin: 0;
+            color: var(--md-text-secondary);
+            line-height: 1.7;
+            font-size: 0.9rem;
+        }
+        .qa-answer ul, .qa-answer ol {
+            padding-left: 36px;
+        }
+        .qa-answer li {
+            margin-bottom: 8px;
+        }
+        .qa-answer li:last-child {
+            margin-bottom: 0;
+        }
+        .qa-answer pre {
+            margin: 12px 20px 20px;
+            padding: 16px;
+            background: var(--md-background);
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: var(--md-text-primary);
+        }
+        .qa-answer code {
+            font-family: 'Fira Code', monospace;
+            background: rgba(128, 128, 128, 0.15);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+        .qa-answer pre code {
+            background: transparent;
+            padding: 0;
+        }
     </style>
 </head>
 <body>
@@ -707,6 +802,7 @@ var tmpl = template.Must(template.New("index").Parse(`
             <div class="header-actions">
                 <button class="nav-btn" onclick="showPage('home')">🏠 Главная</button>
                 <button class="nav-btn" onclick="showPage('quiz')">🎯 Викторина</button>
+                <button class="nav-btn" onclick="showPage('interview')">💼 Собеседование</button>
                 <button class="nav-btn" onclick="showPage('stats')">📊 Статистика</button>
                 <button class="nav-btn" onclick="showPage('leaderboard')">🏆 Лидеры</button>
                 <button class="theme-toggle" onclick="toggleTheme()" title="Переключить тему">
@@ -812,6 +908,371 @@ var tmpl = template.Must(template.New("index").Parse(`
                     </tbody>
                 </table>
             </div>
+
+            <!-- Interview Prep Page -->
+            <div id="interview" class="page">
+                <h2 style="margin-bottom: 10px; text-align: center;">💼 Gopher, Go Offer</h2>
+                <p style="text-align: center; color: var(--md-text-secondary); margin-bottom: 30px;">Вопросы с собеседований для подготовки</p>
+                
+                <div class="interview-grid">
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Как реализовано ООП в Go?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>В Go нет классической реализации ООП, так как он не объектно-ориентированный язык. При этом в Go есть свои приближения:</p>
+                            <ul>
+                                <li><strong>Структуры</strong> — типы, в которые можно включать другие типы</li>
+                                <li><strong>Методы</strong> — функции с получателем</li>
+                                <li><strong>Интерфейсы</strong> — контракты на поведение</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Как реализовано наследование в Go?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>Как такового наследования в Go нет, но есть <strong>встраивание (embedding) структур</strong>. Мы можем включать одни структуры в другие. При этом методы встраиваемой структуры становятся доступны в родительской.</p>
+                            <p><strong>Если в родительской и дочерней структуре есть методы с одинаковым названием</strong> — реализация родительского метода будет переписана реализацией дочернего метода.</p>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Как реализована инкапсуляция в Go?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>Инкапсуляция в Go реализована через <strong>регистр первой буквы</strong> названия:</p>
+                            <ul>
+                                <li><strong>Верхний регистр</strong> (Exported) — доступно за рамками пакета</li>
+                                <li><strong>Нижний регистр</strong> (Unexported) — доступно только в рамках пакета</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Как реализован полиморфизм в Go?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>Полиморфизм в Go реализован через <strong>интерфейсы</strong>. Интерфейс — это контракт на определённое поведение. Типы реализуют методы, удовлетворяющие интерфейсу, и мы можем работать со всеми такими типами как с единым интерфейсным типом.</p>
+                            <p>Реализация интерфейса в Go <strong>неявная</strong> — не нужно объявлять implements.</p>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Как работает append для слайсов?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>Функция <code>append</code> принимает слайс и переменное количество элементов. Она расширяет слайс за пределы его <code>len</code>, возвращая новый слайс:</p>
+                            <ul>
+                                <li>Если количество элементов не превышает <code>cap</code> — возвращается слайс, ссылающийся на тот же базовый массив</li>
+                                <li>Если превышает — создаётся новый массив, и возвращается слайс с ссылкой на него</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Какой размер выделяется при расширении слайса?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>При расширении слайса:</p>
+                            <ul>
+                                <li>Если требуемая <code>cap</code> больше чем вдвое исходной — новая <code>cap</code> равна требуемой</li>
+                                <li>Если <code>len</code> текущего слайса меньше 1024 — новая <code>cap</code> в два раза больше</li>
+                                <li>Иначе — емкость увеличивается в цикле на 25% пока не будет обработано переполнение</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Как реализована map в Go?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>Map в Go — структура, реализующая операции хеширования. Ссылается на <strong>bucket</strong> (ведра), каждый содержит:</p>
+                            <ul>
+                                <li>8 экстра-бит для доступа к значениям</li>
+                                <li>Ссылку на следующий коллизионный bucket</li>
+                                <li>8 пар ключ-значение в массиве</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Почему нельзя брать ссылку на значение map по ключу?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>Map поддерживает <strong>процедуру эвакуации</strong> — перенос значений из одной области памяти в другую. Значения могут перемещаться, поэтому ссылка на них будет недействительной.</p>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Что такое эвакуация в map?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>Эвакуация — процесс переноса значений map из одной области памяти в другую. Происходит когда среднее количество значений в bucket достигает ~6.5 (максимум 8). Начинается расширение map, старые и новые данные связаны на время процесса.</p>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Как происходит поиск по ключу в map?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <ol>
+                                <li>Вычисляется хэш от ключа</li>
+                                <li>По хэшу и размеру bucket вычисляется bucket</li>
+                                <li>Вычисляется дополнительный хэш (первые 8 бит)</li>
+                                <li>В bucket сравниваются 8 дополнительных хэшей</li>
+                                <li>При совпадении — возвращается значение</li>
+                                <li>При несовпадении — переход в следующий bucket</li>
+                                <li>Если не найдено — дефолтное значение</li>
+                            </ol>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Что такое пустой интерфейс?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p><code>interface{}</code> (или <code>any</code> в Go 1.18+) — интерфейс без методов. Ему соответствует <strong>абсолютно любой тип</strong>, так как не нужно реализовывать ни одного метода.</p>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Что такое nil интерфейс?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>Интерфейс в Go — структура с ссылкой на значение и itab (служебная информация). <strong>nil интерфейс</strong> не ссылается на значение, но содержит itab. Булево сравнение <code>nil == интерфейс</code> всегда ложное.</p>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Как преобразовать интерфейс к типу?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>Используется <strong>type assertion</strong>: <code>value, ok := interfaceValue.(Type)</code></p>
+                            <ul>
+                                <li><code>ok == true</code> — преобразование успешно</li>
+                                <li><code>ok == false</code> — возврат дефолтного значения типа</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Зачем используется defer?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p><code>defer</code> используется для <strong>отложенного вызова функции</strong>. Функция с defer выполняется перед выходом из внешней функции. Аргументы оцениваются немедленно в момент объявления defer.</p>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Порядок выполнения нескольких defer?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>defer добавляет функцию в <strong>стек</strong>. При возврате вызовы выполняются в порядке <strong>LIFO</strong> (last in first out) — от последнего к первому.</p>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Как работает сборщик мусора в Go?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>GC в Go использует подход <strong>"пометка и освобождение"</strong> (mark-and-sweep). Автоматически отслеживает использование памяти и освобождает неиспользуемые ресурсы.</p>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Сколько памяти занимает горутина?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>Горутина по умолчанию занимает <strong>2KB стековой памяти</strong>. Стек может расти или уменьшаться динамически по мере необходимости.</p>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Способы синхронизации в Go?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <ul>
+                                <li><strong>Каналы (channels)</strong> — обмен данными между горутинами</li>
+                                <li><strong>Мьютексы (mutexes)</strong> — защита доступа к общим данным</li>
+                                <li><strong>Wait Groups</strong> — координация завершения горутин</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Сложность поиска по срезу и map?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <ul>
+                                <li><strong>Срез (slice)</strong>: O(n) — линейный поиск</li>
+                                <li><strong>Map</strong>: O(1) — поиск по ключу за константное время</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Что делает default в select?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p><code>default</code> в <code>select</code> выполняется когда <strong>ни один из каналов не готов</strong> для обмена сообщениями. Позволяет избежать блокировки.</p>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Что такое nil канал?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>Nil канал — неинициализированный канал (не создан через <code>make</code>).</p>
+                            <ul>
+                                <li><strong>Чтение из nil канала</strong> — блокировка навсегда</li>
+                                <li><strong>Запись в nil канал</strong> — блокировка навсегда</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Безопасен ли слайс для параллелизма?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p><strong>Нет, слайс не потокобезопасен</strong>. Внутренняя структура может привести к гонкам данных при доступе из разных горутин. Используйте мьютексы или каналы для синхронизации.</p>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Правила выделения переменной в горутине?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>Необходимо <strong>передавать переменные как параметры</strong> при создании горутины, чтобы избежать состояния гонки. Каждая горутина имеет собственный стек, но доступ к общей памяти может быть проблематичным.</p>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Паттерн Singleton в Go?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p>Singleton гарантирует один экземпляр класса и глобальную точку доступа. В Go реализуется через <code>sync.Once</code>:</p>
+                            <pre><code>var once sync.Once
+var instance *Singleton
+
+func GetInstance() *Singleton {
+    once.Do(func() {
+        instance = &Singleton{}
+    })
+    return instance
+}</code></pre>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Как устроены контексты в Go?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p><code>context.Context</code> передаётся между горутинами для:</p>
+                            <ul>
+                                <li>Управления отменой операций</li>
+                                <li>Сигнализации об ошибках</li>
+                                <li>Передачи значений</li>
+                                <li>Управления временем жизни запросов</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="qa-card">
+                        <div class="qa-question" onclick="toggleAnswer(this)">
+                            <span>📌</span>
+                            <span>Как обработать панику с defer и recovery?</span>
+                            <span class="qa-icon">▼</span>
+                        </div>
+                        <div class="qa-answer">
+                            <p><code>recover()</code> вызывается в отложенной функции для обработки паники:</p>
+                            <pre><code>func safe() {
+    defer func() {
+        if r := recover(); r != nil {
+            fmt.Println("Recovered:", r)
+        }
+    }()
+    panic("error")
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -854,6 +1315,12 @@ var tmpl = template.Must(template.New("index").Parse(`
                 icon.textContent = '☀️';
                 localStorage.setItem('goquiz_theme', 'dark');
             }
+        }
+
+        // Toggle interview Q&A answer
+        function toggleAnswer(element) {
+            const card = element.closest('.qa-card');
+            card.classList.toggle('active');
         }
 
         // Page navigation

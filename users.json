@@ -1025,12 +1025,21 @@
     "asked_questions": [],
     "created_at": "2026-03-05T23:34:10.229942204+03:00"
   },
+  "user_1772746628651638614": {
+    "id": "user_1772746628651638614",
+    "total_exp": 0,
+    "correct_answers": 0,
+    "wrong_answers": 0,
+    "level": 1,
+    "asked_questions": [],
+    "created_at": "2026-03-06T00:37:08.651645314+03:00"
+  },
   "user_onulpt1ip": {
     "id": "user_onulpt1ip",
-    "total_exp": 95,
-    "correct_answers": 12,
-    "wrong_answers": 4,
-    "level": 1,
+    "total_exp": 105,
+    "correct_answers": 13,
+    "wrong_answers": 5,
+    "level": 2,
     "asked_questions": [],
     "created_at": "2026-03-06T00:04:26.735942098+03:00"
   }
