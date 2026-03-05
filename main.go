@@ -720,6 +720,17 @@ var tmpl = template.Must(template.New("index").Parse(`
             localStorage.setItem('goquiz_user_id', userId);
         }
 
+        // Set cookie for server to read
+        document.cookie = "user_id=" + userId + "; path=/; max-age=31536000";
+
+        // Helper to get headers with user ID
+        function getHeaders() {
+            return {
+                'Content-Type': 'application/json',
+                'X-User-ID': userId
+            };
+        }
+
         let currentQuestion = null;
         let answered = false;
 
@@ -768,7 +779,7 @@ var tmpl = template.Must(template.New("index").Parse(`
             document.getElementById('options-container').innerHTML = '<p style="text-align:center;color:#888;">Загрузка...</p>';
 
             try {
-                const res = await fetch('/api/quiz');
+                const res = await fetch('/api/quiz', { headers: getHeaders() });
                 const data = await res.json();
                 
                 if (!data.question) {
@@ -816,7 +827,7 @@ var tmpl = template.Must(template.New("index").Parse(`
             try {
                 const res = await fetch('/api/answer', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getHeaders(),
                     body: JSON.stringify({
                         question_id: currentQuestion.id,
                         option_index: optionIndex
@@ -852,7 +863,7 @@ var tmpl = template.Must(template.New("index").Parse(`
         // Update stats display
         async function updateStatsDisplay() {
             try {
-                const res = await fetch('/api/stats');
+                const res = await fetch('/api/stats', { headers: getHeaders() });
                 const data = await res.json();
                 if (data.user) {
                     document.getElementById('level-display').textContent = 'Уровень ' + data.user.level;
@@ -866,7 +877,7 @@ var tmpl = template.Must(template.New("index").Parse(`
         // Load stats
         async function loadStats() {
             try {
-                const res = await fetch('/api/stats');
+                const res = await fetch('/api/stats', { headers: getHeaders() });
                 const data = await res.json();
                 
                 if (data.user) {
@@ -885,7 +896,7 @@ var tmpl = template.Must(template.New("index").Parse(`
         // Load leaderboard
         async function loadLeaderboard() {
             try {
-                const res = await fetch('/api/leaderboard');
+                const res = await fetch('/api/leaderboard', { headers: getHeaders() });
                 const data = await res.json();
                 
                 const tbody = document.getElementById('leaderboard-body');
@@ -917,7 +928,7 @@ var tmpl = template.Must(template.New("index").Parse(`
             if (!confirm('Вы уверены? Весь прогресс будет сброшен.')) return;
 
             try {
-                await fetch('/api/reset', { method: 'POST' });
+                await fetch('/api/reset', { method: 'POST', headers: getHeaders() });
                 alert('Прогресс сброшен!');
                 loadStats();
             } catch (err) {
@@ -951,12 +962,23 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getOrCreateUserID(r *http.Request) string {
+func getOrCreateUserID(w http.ResponseWriter, r *http.Request) string {
+	// Try cookie first
 	cookie, err := r.Cookie("user_id")
 	if err == nil && cookie.Value != "" {
 		return cookie.Value
 	}
-	return fmt.Sprintf("user_%d", time.Now().UnixNano())
+
+	// Create new user ID and set cookie
+	userID = fmt.Sprintf("user_%d", time.Now().UnixNano())
+	http.SetCookie(w, &http.Cookie{
+		Name:     "user_id",
+		Value:    userID,
+		Path:     "/",
+		MaxAge:   86400 * 365,
+		HttpOnly: false, // Allow JS to read
+	})
+	return userID
 }
 
 func quizHandler(w http.ResponseWriter, r *http.Request) {
@@ -965,9 +987,10 @@ func quizHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := getOrCreateUserID(r)
+	// Get or create user ID (sets cookie if new)
+	userID := getOrCreateUserID(w, r)
 	user := getUser(userID)
-	
+
 	// Find available questions
 	askedMap := make(map[int]bool)
 	for _, id := range user.AskedQuestions {
@@ -989,7 +1012,7 @@ func quizHandler(w http.ResponseWriter, r *http.Request) {
 	if len(available) > 0 {
 		q := available[rand.Intn(len(available))]
 		response.Question = &q
-		
+
 		// Store current question in session
 		sessionsMu.Lock()
 		sessions[userID] = &Session{
@@ -1001,6 +1024,7 @@ func quizHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	// Cookie is already set by getOrCreateUserID
 	json.NewEncoder(w).Encode(response)
 }
 
@@ -1016,7 +1040,7 @@ func answerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := getOrCreateUserID(r)
+	userID := getOrCreateUserID(w, r)
 	user := getUser(userID)
 
 	// Find question
@@ -1063,7 +1087,7 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := getOrCreateUserID(r)
+	userID := getOrCreateUserID(w, r)
 	user := getUser(userID)
 	
 	response := StatsResponse{
@@ -1132,7 +1156,7 @@ func resetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := getOrCreateUserID(r)
+	userID := getOrCreateUserID(w, r)
 	user := getUser(userID)
 	user.AskedQuestions = []int{}
 
