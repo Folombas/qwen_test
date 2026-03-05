@@ -111,6 +111,7 @@ func main() {
 	}()
 
 	// HTTP handlers
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	http.HandleFunc("/", homeHandler)
 	http.HandleFunc("/api/quiz", quizHandler)
 	http.HandleFunc("/api/answer", answerHandler)
@@ -194,6 +195,7 @@ var tmpl = template.Must(template.New("index").Parse(`
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Go Quiz - Викторина по языку Go</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/modern.css">
     <style>
         /* Material Design Color Palette */
         :root {
