@@ -1,0 +1,56 @@
+# Go Quiz — Docker Ignore
+
+# Binaries
+qwen_test
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Database
+*.db
+*.db-journal
+data/
+backups/
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.docker/
+
+# Documentation
+*.md
+CHANGELOG*.md
+ROADMAP.md
+DEPLOY.md
+
+# Tests
+coverage.out
+*_test.go
+
+# Misc
+quiz-server
+users.json

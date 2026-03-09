@@ -1,0 +1,98 @@
+# Go Quiz — Docker Compose
+# Полный стек для production деплоя
+
+version: '3.8'
+
+services:
+  # Go Quiz Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: goquiz-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      - PORT=:8080
+      - DB_PATH=/app/data/qwen_test.db
+      - BACKUP_DIR=/app/backups
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+    volumes:
+      - app-data:/app/data
+      - app-backups:/app/backups
+      - ./logs:/app/logs
+    networks:
+      - goquiz-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/stats"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: goquiz-nginx
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - app
+    networks:
+      - goquiz-network
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # Certbot for Let's Encrypt SSL
+  certbot:
+    image: certbot/certbot
+    container_name: goquiz-certbot
+    volumes:
+      - ./nginx/ssl:/etc/letsencrypt
+      - ./nginx/certbot-webroot:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - goquiz-network
+    profiles:
+      - ssl
+
+  # Watchtower for auto-updates (optional)
+  watchtower:
+    image: containrrr/watchtower
+    container_name: goquiz-watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 3600 --cleanup goquiz-app
+    restart: unless-stopped
+    networks:
+      - goquiz-network
+    profiles:
+      - auto-update
+
+# Networks
+networks:
+  goquiz-network:
+    driver: bridge
+
+# Volumes
+volumes:
+  app-data:
+    driver: local
+  app-backups:
+    driver: local
