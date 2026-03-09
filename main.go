@@ -527,12 +527,12 @@ var tmpl = template.Must(template.New("index").Parse(`
                     <div class="quiz-container">
                         <div class="quiz-header">
                             <span>Вопрос <span v-text="quizAnswered + 1"></span> из <span v-text="quizTotal"></span></span>
-                            <span class="level-badge">Уровень {{ player.level }}</span>
+                            <span class="level-badge">Уровень <span v-text="player.level"></span></span>
                         </div>
                         <div class="progress-bar">
                             <div class="progress-fill animated" :style="{ width: ((quizAnswered + 1) / quizTotal) * 100 + '%' }"></div>
                         </div>
-                        <div class="question-text">{{ currentQuestion?.Question || 'Загрузка...' }}</div>
+                        <div class="question-text"><span v-text="currentQuestion?.Question || 'Загрузка...'"></span></div>
                         <div class="options">
                             <transition-group name="option">
                                 <button
@@ -546,14 +546,14 @@ var tmpl = template.Must(template.New("index").Parse(`
                                     }"
                                     @click="answerQuestion(idx, $event)"
                                 >
-                                    <span class="option-text">{{ option }}</span>
+                                    <span class="option-text"><span v-text="option"></span></span>
                                     <span class="option-indicator" v-if="answered && idx === currentQuestion?.Correct">✅</span>
                                     <span class="option-indicator" v-if="answered && idx === selectedOption && idx !== currentQuestion?.Correct">❌</span>
                                 </button>
                             </transition-group>
                         </div>
                         <div class="quiz-footer">
-                            <div class="exp-badge glow">{{ player.experience }} EXP</div>
+                            <div class="exp-badge glow"><span v-text="player.experience"></span> EXP</div>
                             <transition name="slide">
                                 <button v-if="answered" class="next-btn pulse" @click="nextQuestion()">Далее →</button>
                             </transition>
@@ -562,7 +562,7 @@ var tmpl = template.Must(template.New("index").Parse(`
                         <!-- Combo Counter -->
                         <transition name="combo">
                             <div v-if="showCombo && combo >= 2" class="combo-counter">
-                                <span class="combo-text">🔥 COMBO x{{ combo }}</span>
+                                <span class="combo-text">🔥 COMBO x<span v-text="combo"></span></span>
                             </div>
                         </transition>
                     </div>
@@ -612,34 +612,34 @@ var tmpl = template.Must(template.New("index").Parse(`
                 <div v-show="currentPage === 'skills'" class="page">
                     <h2 style="margin-bottom: 20px; text-align: center;">🌳 Дерево навыков</h2>
                     <div class="skill-points-display glow">
-                        ✨ Очки навыков: {{ skillTree.skill_points }} (всего: {{ skillTree.total_points }})
+                        ✨ Очки навыков: <span v-text="skillTree.skill_points"></span> (всего: <span v-text="skillTree.total_points"></span>)
                     </div>
                     <div class="skills-container">
                         <div v-for="(catName, catIdx) in Object.keys(skillCategories)" :key="catIdx" class="skill-category">
-                            <h3 class="category-title">{{ catName }}</h3>
+                            <h3 class="category-title"><span v-text="catName"></span></h3>
                             <transition-group name="skill">
                                 <div v-for="skillId in skillCategories[catName]" :key="skillId" class="skill-item hover-lift">
                                     <div class="skill-header">
                                         <div class="skill-name">
-                                            <span class="skill-icon">{{ skillTree.skills[skillId]?.icon }}</span>
-                                            <span>{{ skillTree.skills[skillId]?.name }}</span>
+                                            <span class="skill-icon"><span v-text="skillTree.skills[skillId]?.icon"></span></span>
+                                            <span><span v-text="skillTree.skills[skillId]?.name"></span></span>
                                         </div>
-                                        <div class="skill-level">Ур. {{ skillTree.skills[skillId]?.level }}/{{ skillTree.skills[skillId]?.max_level }}</div>
+                                        <div class="skill-level">Ур. <span v-text="skillTree.skills[skillId]?.level"></span>/<span v-text="skillTree.skills[skillId]?.max_level"></span></div>
                                     </div>
                                     <div class="skill-bar">
                                         <div class="skill-bar-fill animated" :style="{ width: getSkillProgress(skillTree.skills[skillId]) + '%' }"></div>
                                     </div>
-                                    <div class="skill-description">{{ skillTree.skills[skillId]?.description }}</div>
+                                    <div class="skill-description"><span v-text="skillTree.skills[skillId]?.description"></span></div>
                                     <div class="skill-bonus">
-                                        +{{ (skillTree.skills[skillId]?.bonus_value || 0) * (skillTree.skills[skillId]?.level || 0) }} к {{ getBonusName(skillTree.skills[skillId]?.bonus_type) }}
-                                        (всего: +{{ bonuses[skillTree.skills[skillId]?.bonus_type] || 0 }})
+                                        +<span v-text="(skillTree.skills[skillId]?.bonus_value || 0) * (skillTree.skills[skillId]?.level || 0)"></span> к <span v-text="getBonusName(skillTree.skills[skillId]?.bonus_type)"></span>
+                                        (всего: +<span v-text="bonuses[skillTree.skills[skillId]?.bonus_type] || 0"></span>)
                                     </div>
                                     <button
                                         class="upgrade-btn pulse-small"
                                         @click="upgradeSkill(skillId, $event)"
                                         :disabled="!skillTree.skills[skillId]?.unlocked || skillTree.skills[skillId]?.level >= skillTree.skills[skillId]?.max_level"
                                     >
-                                        ⬆️ Улучшить ({{ skillTree.skills[skillId]?.cost }} очк.)
+                                        ⬆️ Улучшить (<span v-text="skillTree.skills[skillId]?.cost"></span> очк.)
                                     </button>
                                 </div>
                             </transition-group>
@@ -660,28 +660,28 @@ var tmpl = template.Must(template.New("index").Parse(`
                                         <span v-if="quest.completed && quest.claimed" class="quest-icon">✅</span>
                                         <span v-else-if="quest.completed" class="quest-icon gift">🎁</span>
                                         <span v-else class="quest-icon">⏳</span>
-                                        {{ quest.name }}
+                                        <span v-text="quest.name"></span>
                                     </div>
-                                    <div class="quest-status">{{ quest.progress }}/{{ quest.goal }}</div>
+                                    <div class="quest-status"><span v-text="quest.progress"></span>/<span v-text="quest.goal"></span></div>
                                 </div>
                                 <div class="quest-progress-bar">
                                     <div class="quest-progress-fill animated" :style="{ width: getQuestProgress(quest) + '%' }"></div>
                                 </div>
-                                <div>{{ quest.description }}</div>
+                                <div><span v-text="quest.description"></span></div>
                                 <transition name="fade">
                                     <button
                                         v-if="quest.completed && !quest.claimed"
                                         class="claim-btn pulse"
                                         @click="claimQuest(quest.id)"
                                     >
-                                        🎁 Забрать ({{ quest.reward }} очк.)
+                                        🎁 Забрать (<span v-text="quest.reward"></span> очк.)
                                     </button>
                                 </transition>
                             </div>
                         </transition-group>
                         <div class="quest-stats">
-                            <p>🔥 Серия дней: <span class="highlight">{{ questSystem.streak }}</span></p>
-                            <p>📊 Всего выполнено: <span class="highlight">{{ questSystem.total_completed }}</span></p>
+                            <p>🔥 Серия дней: <span class="highlight"><span v-text="questSystem.streak"></span></span></p>
+                            <p>📊 Всего выполнено: <span class="highlight"><span v-text="questSystem.total_completed"></span></span></p>
                         </div>
                     </div>
                 </div>
@@ -693,7 +693,7 @@ var tmpl = template.Must(template.New("index").Parse(`
                     <h2 style="margin-bottom: 20px; text-align: center;">🏆 Достижения</h2>
                     <div class="achievements-container">
                         <p style="margin-bottom: 20px;" class="achievement-progress">
-                            Всего разблокировано: <span class="highlight">{{ achievements.unlocked_count }}</span>/<span class="highlight">{{ achievements.total_count }}</span>
+                            Всего разблокировано: <span class="highlight"><span v-text="achievements.unlocked_count"></span></span>/<span class="highlight"><span v-text="achievements.total_count"></span></span>
                         </p>
                         <transition-group name="achievement">
                             <div
@@ -702,10 +702,10 @@ var tmpl = template.Must(template.New("index").Parse(`
                                 class="achievement-item"
                                 :class="{ unlocked: ach.unlocked, 'hover-lift': ach.unlocked }"
                             >
-                                <div class="achievement-icon">{{ ach.unlocked ? ach.icon : '🔒' }}</div>
+                                <div class="achievement-icon"><span v-text="ach.unlocked ? ach.icon : '🔒'"></span></div>
                                 <div class="achievement-info">
-                                    <div class="achievement-name">{{ ach.name }}</div>
-                                    <div class="achievement-description">{{ ach.description }}</div>
+                                    <div class="achievement-name"><span v-text="ach.name"></span></div>
+                                    <div class="achievement-description"><span v-text="ach.description"></span></div>
                                 </div>
                             </div>
                         </transition-group>
@@ -720,35 +720,35 @@ var tmpl = template.Must(template.New("index").Parse(`
                     <div class="stats-grid">
                         <transition-group name="stat">
                             <div class="stat-card hover-lift" key="s1">
-                                <div class="stat-value">{{ player.level }}</div>
+                                <div class="stat-value"><span v-text="player.level"></span></div>
                                 <div class="stat-label">Уровень</div>
                             </div>
                             <div class="stat-card hover-lift" key="s2">
-                                <div class="stat-value">{{ player.experience }}</div>
+                                <div class="stat-value"><span v-text="player.experience"></span></div>
                                 <div class="stat-label">Всего EXP</div>
                             </div>
                             <div class="stat-card hover-lift" key="s3">
-                                <div class="stat-value">{{ player.correct_answers }}</div>
+                                <div class="stat-value"><span v-text="player.correct_answers"></span></div>
                                 <div class="stat-label">Правильных</div>
                             </div>
                             <div class="stat-card hover-lift" key="s4">
-                                <div class="stat-value">{{ player.wrong_answers }}</div>
+                                <div class="stat-value"><span v-text="player.wrong_answers"></span></div>
                                 <div class="stat-label">Неправильных</div>
                             </div>
                             <div class="stat-card hover-lift" key="s5">
-                                <div class="stat-value">{{ player.go_knowledge }}/100</div>
+                                <div class="stat-value"><span v-text="player.go_knowledge"></span>/100</div>
                                 <div class="stat-label">Знание Go</div>
                             </div>
                             <div class="stat-card hover-lift" key="s6">
-                                <div class="stat-value">{{ player.focus }}%</div>
+                                <div class="stat-value"><span v-text="player.focus"></span>%</div>
                                 <div class="stat-label">Фокус</div>
                             </div>
                             <div class="stat-card hover-lift" key="s7">
-                                <div class="stat-value">{{ player.willpower }}%</div>
+                                <div class="stat-value"><span v-text="player.willpower"></span>%</div>
                                 <div class="stat-label">Сила воли</div>
                             </div>
                             <div class="stat-card hover-lift" key="s8">
-                                <div class="stat-value glow-text">{{ player.rating }}</div>
+                                <div class="stat-value glow-text"><span v-text="player.rating"></span></div>
                                 <div class="stat-label">Рейтинг</div>
                             </div>
                         </transition-group>
@@ -775,11 +775,11 @@ var tmpl = template.Must(template.New("index").Parse(`
                         </thead>
                         <tbody key="body">
                             <tr v-for="(entry, idx) in leaderboard" :key="entry.id" :class="'rank-' + (idx + 1)">
-                                <td><span class="rank-badge" :class="'rank-' + (idx + 1)">{{ idx + 1 }}</span></td>
-                                <td>{{ entry.name }}</td>
-                                <td>{{ entry.level }}</td>
-                                <td class="rating">{{ entry.rating }}</td>
-                                <td>{{ entry.correct }}</td>
+                                <td><span class="rank-badge" :class="'rank-' + (idx + 1)"><span v-text="idx + 1"></span></span></td>
+                                <td><span v-text="entry.name"></span></td>
+                                <td><span v-text="entry.level"></span></td>
+                                <td class="rating"><span v-text="entry.rating"></span></td>
+                                <td><span v-text="entry.correct"></span></td>
                             </tr>
                         </tbody>
                     </transition-group>
@@ -853,7 +853,7 @@ var tmpl = template.Must(template.New("index").Parse(`
         <!-- Toast Notifications -->
         <transition-group name="toast" tag="div" class="toast-container">
             <div v-for="t in toasts" :key="t.id" class="toast" :class="'toast-' + t.type">
-                <span class="toast-message">{{ t.message }}</span>
+                <span class="toast-message"><span v-text="t.message"></span></span>
             </div>
         </transition-group>
 
@@ -872,7 +872,7 @@ var tmpl = template.Must(template.New("index").Parse(`
                               :style="{ left: star.x + '%', top: star.y + '%', transform: 'scale(' + star.scale + ') rotate(' + star.rotation + 'deg)' }">⭐</span>
                     </div>
                     <h1 class="levelup-title">🎉 LEVEL UP!</h1>
-                    <p class="levelup-level">Уровень {{ level }}</p>
+                    <p class="levelup-level">Уровень <span v-text="level"></span></p>
                 </div>
             </div>
         </transition>
@@ -881,7 +881,7 @@ var tmpl = template.Must(template.New("index").Parse(`
         <transition-group name="float">
             <div v-for="text in texts" :key="text.id" class="floating-text"
                  :style="{ left: text.x + 'px', top: text.y + 'px', color: text.color, opacity: text.opacity, transform: 'translateY(' + text.yOffset + 'px)' }">
-                {{ text.text }}
+                <span v-text="text.text"></span>
             </div>
         </transition-group>
 
