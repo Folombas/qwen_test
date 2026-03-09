@@ -15,6 +15,7 @@ import (
 	"qwen_test/internal/auth"
 	"qwen_test/internal/database"
 	"qwen_test/internal/game"
+	"qwen_test/internal/social"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -134,6 +135,11 @@ func main() {
 		log.Fatal("Ошибка миграций admin:", err)
 	}
 
+	// Запускаем миграции для социальных функций
+	if err := database.RunSocialMigrations(); err != nil {
+		log.Fatal("Ошибка миграций social:", err)
+	}
+
 	// Инициализируем JWT сервис
 	jwtService := auth.NewJWTService(
 		"your-super-secret-key-change-me-in-production-min-32-chars",
@@ -149,6 +155,10 @@ func main() {
 	// Инициализируем admin сервис и handlers
 	adminService := admin.NewAdminService(database.DB)
 	adminHandler := admin.NewAdminHandler(adminService)
+
+	// Инициализируем social сервис и handlers
+	socialService := social.NewSocialService(database.DB)
+	socialHandler := social.NewSocialHandler(socialService)
 
 	// Загружаем игроков из БД
 	loadPlayersCache()
@@ -195,6 +205,23 @@ func main() {
 	http.Handle("/api/admin/", authMiddleware.Middleware(
 		authMiddleware.RequireRole("admin", "moderator")(adminRouter),
 	))
+
+	// Social routes (требуется аутентификация)
+	socialRouter := http.NewServeMux()
+	socialRouter.HandleFunc("/friends/requests/send", socialHandler.SendFriendRequest)
+	socialRouter.HandleFunc("/friends/requests/accept", socialHandler.AcceptFriendRequest)
+	socialRouter.HandleFunc("/friends/requests/reject", socialHandler.RejectFriendRequest)
+	socialRouter.HandleFunc("/friends/requests", socialHandler.GetFriendRequests)
+	socialRouter.HandleFunc("/friends", socialHandler.GetFriends)
+	socialRouter.HandleFunc("/friends/remove", socialHandler.RemoveFriend)
+	socialRouter.HandleFunc("/messages/send", socialHandler.SendMessage)
+	socialRouter.HandleFunc("/messages", socialHandler.GetMessages)
+	socialRouter.HandleFunc("/messages/unread", socialHandler.GetUnreadCount)
+	socialRouter.HandleFunc("/challenges/send", socialHandler.SendChallenge)
+	socialRouter.HandleFunc("/challenges", socialHandler.GetChallenges)
+	socialRouter.HandleFunc("/activity", socialHandler.GetActivityFeed)
+	
+	http.Handle("/api/social/", authMiddleware.Middleware(socialRouter))
 
 	// Game routes
 	http.HandleFunc("/api/quiz", quizHandler)
