@@ -420,6 +420,7 @@ var tmpl = template.Must(template.New("index").Parse(`
     <link rel="stylesheet" href="/static/admin-styles.css">
     <link rel="stylesheet" href="/static/tutorial-styles.css">
     <link rel="stylesheet" href="/static/sound-styles.css">
+    <link rel="stylesheet" href="/static/social-styles.css">
     <!-- Vue.js 3 CDN -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 </head>
@@ -454,6 +455,15 @@ var tmpl = template.Must(template.New("index").Parse(`
                 </transition>
                 <transition name="nav-fade" appear>
                     <button class="nav-btn" :class="{ active: currentPage === 'game' }" @click="navigate('game')">🎮</button>
+                </transition>
+                <transition name="nav-fade" appear>
+                    <button class="nav-btn" :class="{ active: currentPage === 'friends' }" @click="navigate('friends')">👥</button>
+                </transition>
+                <transition name="nav-fade" appear>
+                    <button class="nav-btn" :class="{ active: currentPage === 'chat' }" @click="navigate('chat')">💬</button>
+                </transition>
+                <transition name="nav-fade" appear>
+                    <button class="nav-btn" :class="{ active: currentPage === 'activity' }" @click="navigate('activity')">📜</button>
                 </transition>
                 
                 <!-- Auth Button -->
@@ -808,6 +818,34 @@ var tmpl = template.Must(template.New("index").Parse(`
                     <admin-layout></admin-layout>
                 </div>
             </transition>
+            
+            <!-- Friends -->
+            <transition name="page">
+                <div v-show="currentPage === 'friends'" class="page">
+                    <friends-component></friends-component>
+                </div>
+            </transition>
+            
+            <!-- Chat -->
+            <transition name="page">
+                <div v-show="currentPage === 'chat'" class="page">
+                    <chat-component></chat-component>
+                </div>
+            </transition>
+            
+            <!-- Activity -->
+            <transition name="page">
+                <div v-show="currentPage === 'activity'" class="page">
+                    <activity-feed-component></activity-feed-component>
+                </div>
+            </transition>
+            
+            <!-- Challenges -->
+            <transition name="page">
+                <div v-show="currentPage === 'challenges'" class="page">
+                    <challenges-component></challenges-component>
+                </div>
+            </transition>
         </main>
 
         <!-- Toast Notifications -->
@@ -858,6 +896,10 @@ var tmpl = template.Must(template.New("index").Parse(`
     <script src="/static/auth-store.js"></script>
     <script src="/static/sound-store.js"></script>
     <script src="/static/sound-settings.js"></script>
+    <script src="/static/social-store.js"></script>
+    <script src="/static/friends-component.js"></script>
+    <script src="/static/chat-component.js"></script>
+    <script src="/static/activity-component.js"></script>
     <script src="/static/tutorial-store.js"></script>
     <script src="/static/tutorial-overlay.js"></script>
     <script src="/static/tutorial-button.js"></script>

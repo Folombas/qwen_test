@@ -136,6 +136,18 @@ createApp({
                 SoundStore.play('stats');
                 loadAchievements();
             }
+            if (page === 'friends') {
+                SoundStore.play('stats');
+            }
+            if (page === 'chat') {
+                SoundStore.play('stats');
+            }
+            if (page === 'activity') {
+                SoundStore.play('stats');
+            }
+            if (page === 'challenges') {
+                SoundStore.play('stats');
+            }
         }
 
         // === API запросы ===
@@ -591,7 +603,26 @@ if (typeof SoundStore !== 'undefined') {
     SoundStore.init();
 }
 
+// Инициализируем SocialStore
+if (typeof SocialStore !== 'undefined') {
+    SocialStore.init();
+}
+
 // Регистрируем SoundSettings компонент
 if (typeof SoundSettings !== 'undefined') {
     window.app.component('sound-settings', SoundSettings);
+}
+
+// Регистрируем Social компоненты
+if (typeof FriendsComponent !== 'undefined') {
+    window.app.component('friends-component', FriendsComponent);
+}
+if (typeof ChatComponent !== 'undefined') {
+    window.app.component('chat-component', ChatComponent);
+}
+if (typeof ActivityFeedComponent !== 'undefined') {
+    window.app.component('activity-feed-component', ActivityFeedComponent);
+}
+if (typeof ChallengesComponent !== 'undefined') {
+    window.app.component('challenges-component', ChallengesComponent);
 }
