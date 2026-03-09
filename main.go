@@ -149,6 +149,7 @@ func main() {
 	http.HandleFunc("/api/study", studyGoHandler)
 	http.HandleFunc("/api/rest", restHandler)
 	http.HandleFunc("/api/backup", backupHandler)
+	http.HandleFunc("/api/game", gameHandler)
 
 	port := ":8080"
 	fmt.Printf("🚀 Go Quiz Web Server starting on http://localhost%s\n", port)
@@ -359,6 +360,9 @@ var tmpl = template.Must(template.New("index").Parse(`
                 </transition>
                 <transition name="nav-fade" appear>
                     <button class="nav-btn" :class="{ active: currentPage === 'leaderboard' }" @click="navigate('leaderboard')">👑</button>
+                </transition>
+                <transition name="nav-fade" appear>
+                    <button class="nav-btn" :class="{ active: currentPage === 'game' }" @click="navigate('game')">🎮</button>
                 </transition>
                 <button class="theme-toggle" @click="toggleTheme()">{{ theme === 'dark' ? '☀️' : '🌙' }}</button>
             </div>
@@ -667,6 +671,13 @@ var tmpl = template.Must(template.New("index").Parse(`
                     </transition-group>
                 </div>
             </transition>
+
+            <!-- Game -->
+            <transition name="page">
+                <div v-show="currentPage === 'game'" class="page">
+                    <godot-game></godot-game>
+                </div>
+            </transition>
         </main>
 
         <!-- Toast Notifications -->
@@ -711,6 +722,8 @@ var tmpl = template.Must(template.New("index").Parse(`
     <script>
         window.VueEffects = {};
     </script>
+    <script src="/static/godot-bridge.js"></script>
+    <script src="/static/vue-game.js"></script>
     <script src="/static/vue-app.js"></script>
 </body>
 </html>
@@ -1129,6 +1142,45 @@ func backupHandler(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]string{"message": "Бэкап создан: " + backupPath}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// gameHandler возвращает данные для Godot игры
+func gameHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		userID = "anonymous"
+	}
+
+	player := getPlayer(userID)
+	tree := getSkillTree(userID)
+	questSystem := getQuestSystem(userID)
+
+	// Проверяем достижения
+	achievements := getAchievements(userID)
+	achievements.CheckAchievements(player, tree, questSystem)
+
+	// Формируем ответ для Godot
+	response := map[string]interface{}{
+		"player": map[string]interface{}{
+			"id":              player.ID,
+			"level":           player.Level,
+			"experience":      player.Experience,
+			"go_knowledge":    player.GoKnowledge,
+			"focus":           player.Focus,
+			"willpower":       player.Willpower,
+			"combo":           0,
+			"max_combo":       0,
+			"correct_answers": player.CorrectAnswers,
+			"wrong_answers":   player.WrongAnswers,
+			"rating":          player.GetRating(),
+		},
+		"skill_tree":  tree,
+		"quests":      questSystem,
+		"achievements": achievements,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 // --- Database save/load helpers ---

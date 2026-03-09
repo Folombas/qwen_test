@@ -481,3 +481,8 @@ createApp({
         };
     }
 }).mount('#app');
+
+// Регистрируем компонент GodotGame
+if (typeof VueGodotGame !== 'undefined') {
+    app.component('godot-game', VueGodotGame);
+}
