@@ -336,277 +336,381 @@ var tmpl = template.Must(template.New("index").Parse(`
         <header>
             <div class="logo">🧠 Go Quiz</div>
             <div class="header-actions">
-                <button class="nav-btn" :class="{ active: currentPage === 'home' }" @click="navigate('home')">🏠</button>
-                <button class="nav-btn" :class="{ active: currentPage === 'quiz' }" @click="navigate('quiz')">🎯</button>
-                <button class="nav-btn" :class="{ active: currentPage === 'study' }" @click="navigate('study')">📚</button>
-                <button class="nav-btn" :class="{ active: currentPage === 'skills' }" @click="navigate('skills')">🌳</button>
-                <button class="nav-btn" :class="{ active: currentPage === 'quests' }" @click="navigate('quests')">📋</button>
-                <button class="nav-btn" :class="{ active: currentPage === 'achievements' }" @click="navigate('achievements')">🏆</button>
-                <button class="nav-btn" :class="{ active: currentPage === 'stats' }" @click="navigate('stats')">📊</button>
-                <button class="nav-btn" :class="{ active: currentPage === 'leaderboard' }" @click="navigate('leaderboard')">👑</button>
+                <transition name="nav-fade" appear>
+                    <button class="nav-btn" :class="{ active: currentPage === 'home' }" @click="navigate('home')">🏠</button>
+                </transition>
+                <transition name="nav-fade" appear>
+                    <button class="nav-btn" :class="{ active: currentPage === 'quiz' }" @click="navigate('quiz')">🎯</button>
+                </transition>
+                <transition name="nav-fade" appear>
+                    <button class="nav-btn" :class="{ active: currentPage === 'study' }" @click="navigate('study')">📚</button>
+                </transition>
+                <transition name="nav-fade" appear>
+                    <button class="nav-btn" :class="{ active: currentPage === 'skills' }" @click="navigate('skills')">🌳</button>
+                </transition>
+                <transition name="nav-fade" appear>
+                    <button class="nav-btn" :class="{ active: currentPage === 'quests' }" @click="navigate('quests')">📋</button>
+                </transition>
+                <transition name="nav-fade" appear>
+                    <button class="nav-btn" :class="{ active: currentPage === 'achievements' }" @click="navigate('achievements')">🏆</button>
+                </transition>
+                <transition name="nav-fade" appear>
+                    <button class="nav-btn" :class="{ active: currentPage === 'stats' }" @click="navigate('stats')">📊</button>
+                </transition>
+                <transition name="nav-fade" appear>
+                    <button class="nav-btn" :class="{ active: currentPage === 'leaderboard' }" @click="navigate('leaderboard')">👑</button>
+                </transition>
                 <button class="theme-toggle" @click="toggleTheme()">{{ theme === 'dark' ? '☀️' : '🌙' }}</button>
             </div>
         </header>
 
         <main class="main-content">
             <!-- Loading -->
-            <div v-if="isLoading" class="loading-overlay">
-                <div class="spinner"></div>
-                <p>Загрузка...</p>
-            </div>
+            <transition name="fade">
+                <div v-if="isLoading" class="loading-overlay">
+                    <div class="spinner"></div>
+                    <p>Загрузка...</p>
+                </div>
+            </transition>
 
             <!-- Home -->
-            <div v-show="currentPage === 'home'" class="page fade-in">
-                <div class="hero">
-                    <h1>Прокачай знания Go</h1>
-                    <p>Викторина + RPG элементы: уровни, навыки, достижения!</p>
-                    <button class="start-btn" @click="startQuiz()">🚀 Начать</button>
+            <transition name="page">
+                <div v-show="currentPage === 'home'" class="page">
+                    <div class="hero">
+                        <h1 class="gradient-text">Прокачай знания Go</h1>
+                        <p>Викторина + RPG элементы: уровни, навыки, достижения!</p>
+                        <button class="start-btn pulse" @click="startQuiz()">🚀 Начать</button>
+                    </div>
+                    <div class="features">
+                        <transition-group name="stagger">
+                            <div class="feature-card hover-lift" key="f1">
+                                <div class="feature-icon bounce">📚</div>
+                                <h3>{{ quizTotal }} вопросов</h3>
+                                <p>Разные темы и сложности</p>
+                            </div>
+                            <div class="feature-card hover-lift" key="f2">
+                                <div class="feature-icon bounce">🌳</div>
+                                <h3>Навыки</h3>
+                                <p>12 навыков в 4 категориях</p>
+                            </div>
+                            <div class="feature-card hover-lift" key="f3">
+                                <div class="feature-icon bounce">🏆</div>
+                                <h3>Достижения</h3>
+                                <p>23 достижения для коллекции</p>
+                            </div>
+                        </transition-group>
+                    </div>
                 </div>
-                <div class="features">
-                    <div class="feature-card">
-                        <div class="feature-icon">📚</div>
-                        <h3>{{ quizTotal }} вопросов</h3>
-                        <p>Разные темы и сложности</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🌳</div>
-                        <h3>Навыки</h3>
-                        <p>12 навыков в 4 категориях</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🏆</div>
-                        <h3>Достижения</h3>
-                        <p>23 достижения для коллекции</p>
-                    </div>
-                </div>
-            </div>
+            </transition>
 
             <!-- Quiz -->
-            <div v-show="currentPage === 'quiz'" class="page fade-in">
-                <div class="quiz-container">
-                    <div class="quiz-header">
-                        <span>Вопрос {{ quizAnswered + 1 }} из {{ quizTotal }}</span>
-                        <span>Уровень {{ player.level }}</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" :style="{ width: ((quizAnswered + 1) / quizTotal) * 100 + '%' }"></div>
-                    </div>
-                    <div class="question-text">{{ currentQuestion?.Question || 'Загрузка...' }}</div>
-                    <div class="options">
-                        <button 
-                            v-for="(option, idx) in currentQuestion?.Options" 
-                            :key="idx"
-                            class="option-btn"
-                            :class="{ 
-                                disabled: answered,
-                                correct: answered && idx === currentQuestion?.Correct,
-                                wrong: answered && idx === selectedOption && !currentQuestion?.Correct
-                            }"
-                            @click="answerQuestion(idx)"
-                        >
-                            {{ option }}
-                        </button>
-                    </div>
-                    <div class="quiz-footer">
-                        <div class="exp-badge">EXP: {{ player.experience }} (Ур. {{ player.level }})</div>
-                        <button class="next-btn" :class="{ visible: answered }" @click="nextQuestion()">Далее →</button>
+            <transition name="page">
+                <div v-show="currentPage === 'quiz'" class="page" :class="{ 'shake': isShaking }">
+                    <div class="quiz-container">
+                        <div class="quiz-header">
+                            <span>Вопрос {{ quizAnswered + 1 }} из {{ quizTotal }}</span>
+                            <span class="level-badge">Уровень {{ player.level }}</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill animated" :style="{ width: ((quizAnswered + 1) / quizTotal) * 100 + '%' }"></div>
+                        </div>
+                        <div class="question-text">{{ currentQuestion?.Question || 'Загрузка...' }}</div>
+                        <div class="options">
+                            <transition-group name="option">
+                                <button
+                                    v-for="(option, idx) in currentQuestion?.Options"
+                                    :key="idx"
+                                    class="option-btn"
+                                    :class="{
+                                        disabled: answered,
+                                        correct: answered && idx === currentQuestion?.Correct,
+                                        wrong: answered && idx === selectedOption
+                                    }"
+                                    @click="answerQuestion(idx, $event)"
+                                >
+                                    <span class="option-text">{{ option }}</span>
+                                    <span class="option-indicator" v-if="answered && idx === currentQuestion?.Correct">✅</span>
+                                    <span class="option-indicator" v-if="answered && idx === selectedOption && idx !== currentQuestion?.Correct">❌</span>
+                                </button>
+                            </transition-group>
+                        </div>
+                        <div class="quiz-footer">
+                            <div class="exp-badge glow">{{ player.experience }} EXP</div>
+                            <transition name="slide">
+                                <button v-if="answered" class="next-btn pulse" @click="nextQuestion()">Далее →</button>
+                            </transition>
+                        </div>
+                        
+                        <!-- Combo Counter -->
+                        <transition name="combo">
+                            <div v-if="showCombo && combo >= 2" class="combo-counter">
+                                <span class="combo-text">🔥 COMBO x{{ combo }}</span>
+                            </div>
+                        </transition>
                     </div>
                 </div>
-            </div>
+            </transition>
 
             <!-- Study -->
-            <div v-show="currentPage === 'study'" class="page fade-in">
-                <h2 style="margin-bottom: 30px; text-align: center;">📚 Обучение и отдых</h2>
-                <div class="action-cards">
-                    <div class="action-card" @click="studyGo(30)">
-                        <div class="action-icon">📖</div>
-                        <div class="action-title">Изучить Go (30 мин)</div>
-                        <div class="action-desc">+15 EXP, +6 Знание Go, +10 Дофамин</div>
-                        <div class="action-reward">🎯 Квест: 30 минут Go</div>
+            <transition name="page">
+                <div v-show="currentPage === 'study'" class="page">
+                    <h2 style="margin-bottom: 30px; text-align: center;">📚 Обучение и отдых</h2>
+                    <div class="action-cards">
+                        <transition-group name="stagger">
+                            <div class="action-card hover-lift" @click="studyGo(30)" key="s1">
+                                <div class="action-icon bounce">📖</div>
+                                <div class="action-title">Изучить Go (30 мин)</div>
+                                <div class="action-desc">+15 EXP, +6 Знание Go, +10 Дофамин</div>
+                                <div class="action-reward">🎯 Квест: 30 минут Go</div>
+                            </div>
+                            <div class="action-card hover-lift" @click="studyGo(60)" key="s2">
+                                <div class="action-icon bounce">📖</div>
+                                <div class="action-title">Изучить Go (60 мин)</div>
+                                <div class="action-desc">+30 EXP, +12 Знание Go, +20 Дофамин</div>
+                                <div class="action-reward">🎯 Квест: 30 минут Go</div>
+                            </div>
+                            <div class="action-card hover-lift" @click="rest(15)" key="s3">
+                                <div class="action-icon bounce">💤</div>
+                                <div class="action-title">Отдохнуть (15 мин)</div>
+                                <div class="action-desc">+7 Фокус, +5 Дофамин</div>
+                                <div class="action-reward">😌 Восстановление</div>
+                            </div>
+                            <div class="action-card hover-lift" @click="rest(30)" key="s4">
+                                <div class="action-icon bounce">💤</div>
+                                <div class="action-title">Отдохнуть (30 мин)</div>
+                                <div class="action-desc">+15 Фокус, +10 Дофамин</div>
+                                <div class="action-reward">😌 Восстановление</div>
+                            </div>
+                        </transition-group>
                     </div>
-                    <div class="action-card" @click="studyGo(60)">
-                        <div class="action-icon">📖</div>
-                        <div class="action-title">Изучить Go (60 мин)</div>
-                        <div class="action-desc">+30 EXP, +12 Знание Go, +20 Дофамин</div>
-                        <div class="action-reward">🎯 Квест: 30 минут Go</div>
-                    </div>
-                    <div class="action-card" @click="rest(15)">
-                        <div class="action-icon">💤</div>
-                        <div class="action-title">Отдохнуть (15 мин)</div>
-                        <div class="action-desc">+7 Фокус, +5 Дофамин</div>
-                        <div class="action-reward">😌 Восстановление</div>
-                    </div>
-                    <div class="action-card" @click="rest(30)">
-                        <div class="action-icon">💤</div>
-                        <div class="action-title">Отдохнуть (30 мин)</div>
-                        <div class="action-desc">+15 Фокус, +10 Дофамин</div>
-                        <div class="action-reward">😌 Восстановление</div>
+                    <div style="text-align: center;">
+                        <button class="backup-btn pulse" @click="createBackup()">💾 Создать бэкап</button>
                     </div>
                 </div>
-                <div style="text-align: center;">
-                    <button class="backup-btn" @click="createBackup()">💾 Создать бэкап</button>
-                </div>
-            </div>
+            </transition>
 
             <!-- Skills -->
-            <div v-show="currentPage === 'skills'" class="page fade-in">
-                <h2 style="margin-bottom: 20px; text-align: center;">🌳 Дерево навыков</h2>
-                <div class="skill-points-display">
-                    ✨ Очки навыков: {{ skillTree.skill_points }} (всего: {{ skillTree.total_points }})
-                </div>
-                <div class="skills-container">
-                    <div v-for="(catName, catIdx) in Object.keys(skillCategories)" :key="catIdx" class="skill-category">
-                        <h3>{{ catName }}</h3>
-                        <div v-for="skillId in skillCategories[catName]" :key="skillId" class="skill-item">
-                            <div class="skill-header">
-                                <div class="skill-name">
-                                    <span>{{ skillTree.skills[skillId]?.icon }}</span>
-                                    <span>{{ skillTree.skills[skillId]?.name }}</span>
+            <transition name="page">
+                <div v-show="currentPage === 'skills'" class="page">
+                    <h2 style="margin-bottom: 20px; text-align: center;">🌳 Дерево навыков</h2>
+                    <div class="skill-points-display glow">
+                        ✨ Очки навыков: {{ skillTree.skill_points }} (всего: {{ skillTree.total_points }})
+                    </div>
+                    <div class="skills-container">
+                        <div v-for="(catName, catIdx) in Object.keys(skillCategories)" :key="catIdx" class="skill-category">
+                            <h3 class="category-title">{{ catName }}</h3>
+                            <transition-group name="skill">
+                                <div v-for="skillId in skillCategories[catName]" :key="skillId" class="skill-item hover-lift">
+                                    <div class="skill-header">
+                                        <div class="skill-name">
+                                            <span class="skill-icon">{{ skillTree.skills[skillId]?.icon }}</span>
+                                            <span>{{ skillTree.skills[skillId]?.name }}</span>
+                                        </div>
+                                        <div class="skill-level">Ур. {{ skillTree.skills[skillId]?.level }}/{{ skillTree.skills[skillId]?.max_level }}</div>
+                                    </div>
+                                    <div class="skill-bar">
+                                        <div class="skill-bar-fill animated" :style="{ width: getSkillProgress(skillTree.skills[skillId]) + '%' }"></div>
+                                    </div>
+                                    <div class="skill-description">{{ skillTree.skills[skillId]?.description }}</div>
+                                    <div class="skill-bonus">
+                                        +{{ (skillTree.skills[skillId]?.bonus_value || 0) * (skillTree.skills[skillId]?.level || 0) }} к {{ getBonusName(skillTree.skills[skillId]?.bonus_type) }}
+                                        (всего: +{{ bonuses[skillTree.skills[skillId]?.bonus_type] || 0 }})
+                                    </div>
+                                    <button
+                                        class="upgrade-btn pulse-small"
+                                        @click="upgradeSkill(skillId, $event)"
+                                        :disabled="!skillTree.skills[skillId]?.unlocked || skillTree.skills[skillId]?.level >= skillTree.skills[skillId]?.max_level"
+                                    >
+                                        ⬆️ Улучшить ({{ skillTree.skills[skillId]?.cost }} очк.)
+                                    </button>
                                 </div>
-                                <div class="skill-level">Ур. {{ skillTree.skills[skillId]?.level }}/{{ skillTree.skills[skillId]?.max_level }}</div>
-                            </div>
-                            <div class="skill-bar">
-                                <div class="skill-bar-fill" :style="{ width: getSkillProgress(skillTree.skills[skillId]) + '%' }"></div>
-                            </div>
-                            <div class="skill-description">{{ skillTree.skills[skillId]?.description }}</div>
-                            <div class="skill-bonus">
-                                +{{ (skillTree.skills[skillId]?.bonus_value || 0) * (skillTree.skills[skillId]?.level || 0) }} к {{ getBonusName(skillTree.skills[skillId]?.bonus_type) }} 
-                                (всего: +{{ bonuses[skillTree.skills[skillId]?.bonus_type] || 0 }})
-                            </div>
-                            <button 
-                                class="upgrade-btn" 
-                                @click="upgradeSkill(skillId)"
-                                :disabled="!skillTree.skills[skillId]?.unlocked || skillTree.skills[skillId]?.level >= skillTree.skills[skillId]?.max_level"
-                            >
-                                ⬆️ Улучшить ({{ skillTree.skills[skillId]?.cost }} очк.)
-                            </button>
+                            </transition-group>
                         </div>
                     </div>
                 </div>
-            </div>
+            </transition>
 
             <!-- Quests -->
-            <div v-show="currentPage === 'quests'" class="page fade-in">
-                <h2 style="margin-bottom: 20px; text-align: center;">📋 Ежедневные квесты</h2>
-                <div class="quests-container">
-                    <div v-for="quest in questSystem.quests" :key="quest.id" class="quest-item">
-                        <div class="quest-header">
-                            <div class="quest-name">
-                                <span v-if="quest.completed && quest.claimed">✅</span>
-                                <span v-else-if="quest.completed">🎁</span>
-                                <span v-else>⏳</span>
-                                {{ quest.name }}
+            <transition name="page">
+                <div v-show="currentPage === 'quests'" class="page">
+                    <h2 style="margin-bottom: 20px; text-align: center;">📋 Ежедневные квесты</h2>
+                    <div class="quests-container">
+                        <transition-group name="quest">
+                            <div v-for="quest in questSystem.quests" :key="quest.id" class="quest-item hover-lift">
+                                <div class="quest-header">
+                                    <div class="quest-name">
+                                        <span v-if="quest.completed && quest.claimed" class="quest-icon">✅</span>
+                                        <span v-else-if="quest.completed" class="quest-icon gift">🎁</span>
+                                        <span v-else class="quest-icon">⏳</span>
+                                        {{ quest.name }}
+                                    </div>
+                                    <div class="quest-status">{{ quest.progress }}/{{ quest.goal }}</div>
+                                </div>
+                                <div class="quest-progress-bar">
+                                    <div class="quest-progress-fill animated" :style="{ width: getQuestProgress(quest) + '%' }"></div>
+                                </div>
+                                <div>{{ quest.description }}</div>
+                                <transition name="fade">
+                                    <button
+                                        v-if="quest.completed && !quest.claimed"
+                                        class="claim-btn pulse"
+                                        @click="claimQuest(quest.id)"
+                                    >
+                                        🎁 Забрать ({{ quest.reward }} очк.)
+                                    </button>
+                                </transition>
                             </div>
-                            <div class="quest-status">{{ quest.progress }}/{{ quest.goal }}</div>
+                        </transition-group>
+                        <div class="quest-stats">
+                            <p>🔥 Серия дней: <span class="highlight">{{ questSystem.streak }}</span></p>
+                            <p>📊 Всего выполнено: <span class="highlight">{{ questSystem.total_completed }}</span></p>
                         </div>
-                        <div class="quest-progress-bar">
-                            <div class="quest-progress-fill" :style="{ width: getQuestProgress(quest) + '%' }"></div>
-                        </div>
-                        <div>{{ quest.description }}</div>
-                        <button 
-                            v-if="quest.completed && !quest.claimed" 
-                            class="claim-btn" 
-                            @click="claimQuest(quest.id)"
-                        >
-                            🎁 Забрать ({{ quest.reward }} очк.)
-                        </button>
                     </div>
-                    <p>🔥 Серия дней: {{ questSystem.streak }}</p>
-                    <p>📊 Всего выполнено: {{ questSystem.total_completed }}</p>
                 </div>
-            </div>
+            </transition>
 
             <!-- Achievements -->
-            <div v-show="currentPage === 'achievements'" class="page fade-in">
-                <h2 style="margin-bottom: 20px; text-align: center;">🏆 Достижения</h2>
-                <div class="achievements-container">
-                    <p style="margin-bottom: 20px;">
-                        Всего разблокировано: {{ achievements.unlocked_count }}/{{ achievements.total_count }}
-                    </p>
-                    <div 
-                        v-for="ach in Object.values(achievements.system)" 
-                        :key="ach.id"
-                        class="achievement-item"
-                        :class="{ unlocked: ach.unlocked }"
-                    >
-                        <div class="achievement-icon">{{ ach.unlocked ? ach.icon : '🔒' }}</div>
-                        <div class="achievement-info">
-                            <div class="achievement-name">{{ ach.name }}</div>
-                            <div class="achievement-description">{{ ach.description }}</div>
-                        </div>
+            <transition name="page">
+                <div v-show="currentPage === 'achievements'" class="page">
+                    <h2 style="margin-bottom: 20px; text-align: center;">🏆 Достижения</h2>
+                    <div class="achievements-container">
+                        <p style="margin-bottom: 20px;" class="achievement-progress">
+                            Всего разблокировано: <span class="highlight">{{ achievements.unlocked_count }}</span>/<span class="highlight">{{ achievements.total_count }}</span>
+                        </p>
+                        <transition-group name="achievement">
+                            <div
+                                v-for="ach in Object.values(achievements.system)"
+                                :key="ach.id"
+                                class="achievement-item"
+                                :class="{ unlocked: ach.unlocked, 'hover-lift': ach.unlocked }"
+                            >
+                                <div class="achievement-icon">{{ ach.unlocked ? ach.icon : '🔒' }}</div>
+                                <div class="achievement-info">
+                                    <div class="achievement-name">{{ ach.name }}</div>
+                                    <div class="achievement-description">{{ ach.description }}</div>
+                                </div>
+                            </div>
+                        </transition-group>
                     </div>
                 </div>
-            </div>
+            </transition>
 
             <!-- Stats -->
-            <div v-show="currentPage === 'stats'" class="page fade-in">
-                <h2 style="margin-bottom: 30px; text-align: center;">📊 Статистика</h2>
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-value">{{ player.level }}</div>
-                        <div class="stat-label">Уровень</div>
+            <transition name="page">
+                <div v-show="currentPage === 'stats'" class="page">
+                    <h2 style="margin-bottom: 30px; text-align: center;">📊 Статистика</h2>
+                    <div class="stats-grid">
+                        <transition-group name="stat">
+                            <div class="stat-card hover-lift" key="s1">
+                                <div class="stat-value">{{ player.level }}</div>
+                                <div class="stat-label">Уровень</div>
+                            </div>
+                            <div class="stat-card hover-lift" key="s2">
+                                <div class="stat-value">{{ player.experience }}</div>
+                                <div class="stat-label">Всего EXP</div>
+                            </div>
+                            <div class="stat-card hover-lift" key="s3">
+                                <div class="stat-value">{{ player.correct_answers }}</div>
+                                <div class="stat-label">Правильных</div>
+                            </div>
+                            <div class="stat-card hover-lift" key="s4">
+                                <div class="stat-value">{{ player.wrong_answers }}</div>
+                                <div class="stat-label">Неправильных</div>
+                            </div>
+                            <div class="stat-card hover-lift" key="s5">
+                                <div class="stat-value">{{ player.go_knowledge }}/100</div>
+                                <div class="stat-label">Знание Go</div>
+                            </div>
+                            <div class="stat-card hover-lift" key="s6">
+                                <div class="stat-value">{{ player.focus }}%</div>
+                                <div class="stat-label">Фокус</div>
+                            </div>
+                            <div class="stat-card hover-lift" key="s7">
+                                <div class="stat-value">{{ player.willpower }}%</div>
+                                <div class="stat-label">Сила воли</div>
+                            </div>
+                            <div class="stat-card hover-lift" key="s8">
+                                <div class="stat-value glow-text">{{ player.rating }}</div>
+                                <div class="stat-label">Рейтинг</div>
+                            </div>
+                        </transition-group>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-value">{{ player.experience }}</div>
-                        <div class="stat-label">Всего EXP</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">{{ player.correct_answers }}</div>
-                        <div class="stat-label">Правильных</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">{{ player.wrong_answers }}</div>
-                        <div class="stat-label">Неправильных</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">{{ player.go_knowledge }}/100</div>
-                        <div class="stat-label">Знание Go</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">{{ player.focus }}%</div>
-                        <div class="stat-label">Фокус</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">{{ player.willpower }}%</div>
-                        <div class="stat-label">Сила воли</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">{{ player.rating }}</div>
-                        <div class="stat-label">Рейтинг</div>
+                    <div class="reset-section">
+                        <button class="reset-btn" @click="resetProgress()">🔄 Сбросить прогресс</button>
                     </div>
                 </div>
-                <div class="reset-section">
-                    <button class="reset-btn" @click="resetProgress()">🔄 Сбросить прогресс</button>
-                </div>
-            </div>
+            </transition>
 
             <!-- Leaderboard -->
-            <div v-show="currentPage === 'leaderboard'" class="page fade-in">
-                <h2 style="margin-bottom: 30px; text-align: center;">👑 Таблица лидеров</h2>
-                <table class="leaderboard-table">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Игрок</th>
-                            <th>Уровень</th>
-                            <th>Рейтинг</th>
-                            <th>Правильных</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="(entry, idx) in leaderboard" :key="entry.id" :class="'rank-' + (idx + 1)">
-                            <td><span class="rank-badge">{{ idx + 1 }}</span></td>
-                            <td>{{ entry.name }}</td>
-                            <td>{{ entry.level }}</td>
-                            <td>{{ entry.rating }}</td>
-                            <td>{{ entry.correct }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+            <transition name="page">
+                <div v-show="currentPage === 'leaderboard'" class="page">
+                    <h2 style="margin-bottom: 30px; text-align: center;">👑 Таблица лидеров</h2>
+                    <transition-group name="list" tag="table" class="leaderboard-table">
+                        <thead key="head">
+                            <tr>
+                                <th>#</th>
+                                <th>Игрок</th>
+                                <th>Уровень</th>
+                                <th>Рейтинг</th>
+                                <th>Правильных</th>
+                            </tr>
+                        </thead>
+                        <tbody key="body">
+                            <tr v-for="(entry, idx) in leaderboard" :key="entry.id" :class="'rank-' + (idx + 1)">
+                                <td><span class="rank-badge" :class="'rank-' + (idx + 1)">{{ idx + 1 }}</span></td>
+                                <td>{{ entry.name }}</td>
+                                <td>{{ entry.level }}</td>
+                                <td class="rating">{{ entry.rating }}</td>
+                                <td>{{ entry.correct }}</td>
+                            </tr>
+                        </tbody>
+                    </transition-group>
+                </div>
+            </transition>
         </main>
+
+        <!-- Toast Notifications -->
+        <transition-group name="toast" tag="div" class="toast-container">
+            <div v-for="t in toasts" :key="t.id" class="toast" :class="'toast-' + t.type">
+                <span class="toast-message">{{ t.message }}</span>
+            </div>
+        </transition-group>
+
+        <!-- Confetti Canvas -->
+        <canvas v-if="isActive" class="confetti-canvas"></canvas>
+
+        <!-- Level Up Overlay -->
+        <transition name="levelup">
+            <div v-if="isAnimating" class="levelup-overlay">
+                <div class="levelup-content">
+                    <div class="levelup-stars">
+                        <span v-for="star in stars" :key="star.id" class="star" 
+                              :style="{ left: star.x + '%', top: star.y + '%', transform: 'scale(' + star.scale + ') rotate(' + star.rotation + 'deg)' }">⭐</span>
+                    </div>
+                    <h1 class="levelup-title">🎉 LEVEL UP!</h1>
+                    <p class="levelup-level">Уровень {{ level }}</p>
+                </div>
+            </div>
+        </transition>
+
+        <!-- Floating Text -->
+        <transition-group name="float">
+            <div v-for="text in texts" :key="text.id" class="floating-text"
+                 :style="{ left: text.x + 'px', top: text.y + 'px', color: text.color, opacity: text.opacity, transform: 'translateY(' + text.yOffset + 'px)' }">
+                {{ text.text }}
+            </div>
+        </transition-group>
+
+        <!-- Particles -->
+        <div v-for="p in particles" :key="p.id" class="particle"
+             :style="{ left: p.x + 'px', top: p.y + 'px', width: p.size + 'px', height: p.size + 'px', backgroundColor: p.color, opacity: p.life }">
+        </div>
     </div>
 
+    <script src="/static/vue-effects.js"></script>
+    <script>
+        window.VueEffects = {};
+    </script>
     <script src="/static/vue-app.js"></script>
 </body>
 </html>

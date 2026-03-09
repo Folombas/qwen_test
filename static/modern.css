@@ -1,43 +1,149 @@
 /* Go Quiz - Modern Redesign 2026 */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Fira+Code:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Fira+Code:wght@400;600&display=swap');
 
-/* Loading Overlay */
-.loading-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(10, 10, 26, 0.9);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    z-index: 9999;
-    color: #f8fafc;
+/* === Vue.js Transitions === */
+/* Fade */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* Page Transition */
+.page-enter-active, .page-leave-active { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+.page-enter-from { opacity: 0; transform: translateY(30px); }
+.page-leave-to { opacity: 0; transform: translateY(-30px); }
+
+/* Nav Fade */
+.nav-fade-enter-active { transition: all 0.3s ease; transition-delay: calc(var(--i) * 0.05s); }
+.nav-fade-enter-from { opacity: 0; transform: translateY(-10px); }
+
+/* Stagger */
+.stagger-enter-active { transition: all 0.4s ease; }
+.stagger-enter-from { opacity: 0; transform: translateY(20px); }
+.stagger-enter-from:nth-child(1) { transition-delay: 0.1s; }
+.stagger-enter-from:nth-child(2) { transition-delay: 0.2s; }
+.stagger-enter-from:nth-child(3) { transition-delay: 0.3s; }
+.stagger-enter-from:nth-child(4) { transition-delay: 0.4s; }
+
+/* Option */
+.option-enter-active { transition: all 0.3s ease; }
+.option-enter-from { opacity: 0; transform: translateX(-20px); }
+.option-leave-active { position: absolute; transition: all 0.3s ease; }
+.option-leave-to { opacity: 0; transform: translateX(20px); }
+
+/* Slide */
+.slide-enter-active { transition: all 0.3s ease; }
+.slide-enter-from { opacity: 0; transform: translateX(20px); }
+
+/* Combo */
+.combo-enter-active { animation: comboPop 0.5s ease; }
+@keyframes comboPop {
+    0% { transform: scale(0); opacity: 0; }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); opacity: 1; }
 }
 
-.spinner {
-    width: 50px;
-    height: 50px;
-    border: 4px solid rgba(99, 102, 241, 0.2);
-    border-top-color: #6366f1;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
+/* Skill */
+.skill-enter-active { transition: all 0.4s ease; }
+.skill-enter-from { opacity: 0; transform: translateX(-30px); }
+
+/* Quest */
+.quest-enter-active { transition: all 0.4s ease; }
+.quest-enter-from { opacity: 0; transform: scale(0.95); }
+
+/* Achievement */
+.achievement-enter-active { transition: all 0.5s ease; }
+.achievement-enter-from { opacity: 0; transform: scale(0.8); }
+
+/* Stat */
+.stat-enter-active { transition: all 0.4s ease; }
+.stat-enter-from { opacity: 0; transform: translateY(30px); }
+.stat-enter-from:nth-child(1) { transition-delay: 0.05s; }
+.stat-enter-from:nth-child(2) { transition-delay: 0.1s; }
+.stat-enter-from:nth-child(3) { transition-delay: 0.15s; }
+.stat-enter-from:nth-child(4) { transition-delay: 0.2s; }
+.stat-enter-from:nth-child(5) { transition-delay: 0.25s; }
+.stat-enter-from:nth-child(6) { transition-delay: 0.3s; }
+.stat-enter-from:nth-child(7) { transition-delay: 0.35s; }
+.stat-enter-from:nth-child(8) { transition-delay: 0.4s; }
+
+/* List */
+.list-enter-active, .list-leave-active { transition: all 0.3s ease; }
+.list-enter-from { opacity: 0; transform: translateX(-30px); }
+.list-leave-to { opacity: 0; transform: translateX(30px); }
+
+/* Toast */
+.toast-enter-active { transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55); }
+.toast-enter-from { opacity: 0; transform: translateX(100%) scale(0.8); }
+.toast-leave-active { transition: all 0.3s ease; position: absolute; }
+.toast-leave-to { opacity: 0; transform: translateX(100%); }
+
+/* Level Up */
+.levelup-enter-active { transition: all 0.5s ease; }
+.levelup-enter-from { opacity: 0; }
+.levelup-enter-active .star { animation: starPop 0.6s ease forwards; }
+@keyframes starPop {
+    0% { transform: scale(0) rotate(0deg); opacity: 0; }
+    50% { transform: scale(1.3) rotate(180deg); opacity: 1; }
+    100% { transform: scale(1) rotate(360deg); opacity: 1; }
 }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
+/* Float */
+.float-enter-active { transition: all 0.8s ease; }
+.float-leave-active { transition: all 0.8s ease; position: absolute; }
+.float-enter-from, .float-leave-to { opacity: 0; transform: translateY(-50px); }
+
+/* === Animations === */
+/* Pulse */
+.pulse { animation: pulse 2s infinite; }
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
 }
 
-/* Fade In Animation */
-.fade-in {
-    animation: fadeIn 0.3s ease-in-out;
+.pulse-small { animation: pulseSmall 1.5s infinite; }
+@keyframes pulseSmall {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.03); }
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+/* Bounce */
+.bounce { animation: bounce 2s infinite; }
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+/* Hover Lift */
+.hover-lift { transition: all 0.3s ease; }
+.hover-lift:hover { transform: translateY(-8px); box-shadow: 0 12px 24px rgba(99, 102, 241, 0.3); }
+
+/* Shake */
+.shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+@keyframes shake {
+    10%, 90% { transform: translateX(-5px); }
+    20%, 80% { transform: translateX(5px); }
+    30%, 50%, 70% { transform: translateX(-10px); }
+    40%, 60% { transform: translateX(10px); }
+}
+
+/* Glow */
+.glow { box-shadow: 0 0 20px rgba(99, 102, 241, 0.5); }
+.glow-text { text-shadow: 0 0 20px rgba(99, 102, 241, 0.8); }
+
+/* Animated Progress */
+.animated { transition: width 1s cubic-bezier(0.4, 0, 0.2, 1); }
+
+/* Gradient Text */
+.gradient-text {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6, #06b6d4);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: gradientShift 5s ease infinite;
+    background-size: 200% 200%;
+}
+@keyframes gradientShift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
 }
 
 :root {
@@ -724,6 +830,244 @@ body.light-theme .feature-card {
     box-shadow: 0 8px 20px rgba(239, 68, 68, 0.3);
 }
 
+/* === Effects Styles === */
+/* Toast Container */
+.toast-container {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.toast {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 16px 24px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    border-left: 4px solid;
+    min-width: 280px;
+    backdrop-filter: blur(10px);
+}
+
+.toast-success { border-color: #22c55e; background: rgba(34, 197, 94, 0.1); }
+.toast-error { border-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
+.toast-info { border-color: #6366f1; background: rgba(99, 102, 241, 0.1); }
+.toast-warning { border-color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
+
+.toast-message { color: var(--text-main); font-weight: 500; }
+
+/* Confetti Canvas */
+.confetti-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9998;
+}
+
+/* Particles */
+.particle {
+    position: fixed;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9997;
+}
+
+/* Level Up Overlay */
+.levelup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10001;
+}
+
+.levelup-content {
+    text-align: center;
+    position: relative;
+}
+
+.levelup-stars {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 400px;
+    height: 400px;
+    pointer-events: none;
+}
+
+.star {
+    position: absolute;
+    font-size: 2rem;
+    animation: starFloat 2s ease infinite;
+}
+
+@keyframes starFloat {
+    0%, 100% { transform: translateY(0) scale(1) rotate(0deg); opacity: 1; }
+    50% { transform: translateY(-20px) scale(1.1) rotate(180deg); opacity: 0.8; }
+}
+
+.levelup-title {
+    font-size: 4rem;
+    font-weight: 900;
+    background: linear-gradient(135deg, #fbbf24, #f59e0b, #ef4444);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0;
+    animation: titleBounce 0.6s ease;
+}
+
+@keyframes titleBounce {
+    0% { transform: scale(0); }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+}
+
+.levelup-level {
+    font-size: 2rem;
+    color: var(--text-main);
+    margin-top: 20px;
+}
+
+/* Floating Text */
+.floating-text {
+    position: fixed;
+    font-weight: 700;
+    font-size: 1.5rem;
+    pointer-events: none;
+    z-index: 10002;
+    text-shadow: 0 0 10px currentColor;
+}
+
+/* Combo Counter */
+.combo-counter {
+    position: absolute;
+    top: -60px;
+    right: 0;
+    background: linear-gradient(135deg, #f59e0b, #ef4444);
+    padding: 12px 24px;
+    border-radius: 30px;
+    box-shadow: 0 8px 24px rgba(245, 158, 11, 0.4);
+    animation: comboPulse 0.5s ease infinite;
+}
+
+@keyframes comboPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.combo-text {
+    color: #fff;
+    font-weight: 900;
+    font-size: 1.2rem;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Quest Icon */
+.quest-icon { margin-right: 8px; }
+.quest-icon.gift { animation: giftShake 1s ease infinite; }
+
+@keyframes giftShake {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(-10deg); }
+    75% { transform: rotate(10deg); }
+}
+
+/* Option Indicator */
+.option-indicator {
+    float: right;
+    font-size: 1.2rem;
+}
+
+/* Level Badge */
+.level-badge {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+/* Category Title */
+.category-title {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-size: 1.3rem;
+    margin-bottom: 16px;
+}
+
+/* Skill Icon */
+.skill-icon { font-size: 1.5rem; margin-right: 8px; }
+
+/* Quest Stats */
+.quest-stats {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-light);
+}
+
+.quest-stats .highlight {
+    color: #f59e0b;
+    font-weight: 700;
+}
+
+/* Achievement Progress */
+.achievement-progress .highlight {
+    color: #6366f1;
+    font-weight: 700;
+}
+
+/* Rating */
+.rating {
+    font-weight: 700;
+    color: #6366f1;
+}
+
+/* Rank Badge */
+.rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.rank-badge.rank-1 {
+    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    color: #1a1a2e;
+    box-shadow: 0 0 20px rgba(251, 191, 36, 0.5);
+}
+
+.rank-badge.rank-2 {
+    background: linear-gradient(135deg, #9ca3af, #6b7280);
+    color: #1a1a2e;
+    box-shadow: 0 0 15px rgba(156, 163, 175, 0.5);
+}
+
+.rank-badge.rank-3 {
+    background: linear-gradient(135deg, #b45309, #92400e);
+    color: #fff;
+    box-shadow: 0 0 15px rgba(180, 83, 9, 0.5);
+}
+
 /* Responsive */
 @media (max-width: 600px) {
     .hero { padding: 50px 16px 40px; }
@@ -738,4 +1082,8 @@ body.light-theme .feature-card {
     .nav-btn { padding: 10px 14px; font-size: 0.75rem; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
     .stat-value { font-size: 2rem; }
+    
+    .levelup-title { font-size: 2.5rem; }
+    .toast-container { right: 10px; top: 70px; }
+    .toast { min-width: auto; width: calc(100vw - 40px); }
 }
