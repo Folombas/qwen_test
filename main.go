@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"html/template"
 	"log"
-	"math"
 	"math/rand"
 	"net/http"
 	"os"
 	"sync"
 	"time"
+
+	"qwen_test/internal/database"
+	"qwen_test/internal/game"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // Question представляет вопрос викторины
@@ -22,30 +26,7 @@ type Question struct {
 	Exp      int      `json:"exp"`
 }
 
-// UserData хранит статистику игрока
-type UserData struct {
-	ID             string `json:"id"`
-	TotalEXP       int    `json:"total_exp"`
-	CorrectAnswers int    `json:"correct_answers"`
-	WrongAnswers   int    `json:"wrong_answers"`
-	Level          int    `json:"level"`
-	AskedQuestions []int  `json:"asked_questions"`
-	CreatedAt      time.Time `json:"created_at"`
-}
-
-// Session хранит активную сессию игрока
-type Session struct {
-	UserID      string
-	CurrentQ    *Question
-	StartTime   time.Time
-}
-
-// API Request/Response types
-type AnswerRequest struct {
-	QuestionID int `json:"question_id"`
-	OptionIndex int `json:"option_index"`
-}
-
+// API Response types
 type AnswerResponse struct {
 	Correct       bool   `json:"correct"`
 	Exp           int    `json:"exp"`
@@ -53,6 +34,7 @@ type AnswerResponse struct {
 	Message       string `json:"message"`
 	NewExp        int    `json:"new_exp"`
 	NewLevel      int    `json:"new_level"`
+	LevelUp       bool   `json:"level_up"`
 }
 
 type QuizResponse struct {
@@ -62,31 +44,66 @@ type QuizResponse struct {
 }
 
 type StatsResponse struct {
-	User           *UserData `json:"user"`
-	TotalQuestions int       `json:"total_questions"`
-	Progress       float64   `json:"progress"`
+	Player         *game.Player `json:"player"`
+	TotalQuestions int          `json:"total_questions"`
+	Progress       float64      `json:"progress"`
+	SkillPoints    int          `json:"skill_points"`
 }
 
 type LeaderboardEntry struct {
 	ID        string `json:"id"`
+	Name      string `json:"name"`
 	Level     int    `json:"level"`
 	TotalEXP  int    `json:"total_exp"`
 	Correct   int    `json:"correct"`
+	Rating    int    `json:"rating"`
 }
 
 type LeaderboardResponse struct {
 	Entries []LeaderboardEntry `json:"entries"`
 }
 
-// глобальные переменные
+type SkillsResponse struct {
+	Tree        *game.SkillTree `json:"tree"`
+	Bonuses     map[string]int  `json:"bonuses"`
+}
+
+type QuestsResponse struct {
+	System *game.QuestSystem `json:"system"`
+}
+
+type AchievementsResponse struct {
+	System        *game.AchievementSystem `json:"system"`
+	UnlockedCount int                     `json:"unlocked_count"`
+	TotalCount    int                     `json:"total_count"`
+}
+
+type UpgradeSkillRequest struct {
+	SkillID string `json:"skill_id"`
+}
+
+type StudyGoRequest struct {
+	Minutes int `json:"minutes"`
+}
+
+type RestRequest struct {
+	Minutes int `json:"minutes"`
+}
+
+// Глобальные переменные
 var (
 	questions     []Question
-	users         = make(map[string]*UserData)
-	sessions      = make(map[string]*Session)
-	usersMu       sync.RWMutex
-	sessionsMu    sync.RWMutex
 	questionsFile = "questions.json"
-	dataFile      = "users.json"
+	dbPath        = "qwen_test.db"
+)
+
+// Кэш игроков в памяти
+var (
+	playersCache      = make(map[string]*game.Player)
+	skillTreesCache   = make(map[string]*game.SkillTree)
+	questSystemsCache = make(map[string]*game.QuestSystem)
+	achievementsCache = make(map[string]*game.AchievementSystem)
+	cacheMu           sync.RWMutex
 )
 
 func main() {
@@ -96,17 +113,24 @@ func main() {
 	if err := loadQuestions(); err != nil {
 		log.Fatal("Ошибка загрузки вопросов:", err)
 	}
-	log.Printf("Загружено %d вопросов", len(questions))
+	log.Printf("📚 Загружено %d вопросов", len(questions))
 
-	// Загружаем сохранённые данные пользователей
-	loadUserData()
+	// Инициализируем базу данных
+	if err := database.InitDB(dbPath); err != nil {
+		log.Fatal("Ошибка инициализации БД:", err)
+	}
+	defer database.CloseDB()
+	log.Printf("💾 База данных инициализирована: %s", dbPath)
+
+	// Загружаем игроков из БД
+	loadPlayersCache()
 
 	// Автосохранение каждые 5 минут
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
-			saveUserData()
+			saveAllPlayers()
 		}
 	}()
 
@@ -118,13 +142,20 @@ func main() {
 	http.HandleFunc("/api/stats", statsHandler)
 	http.HandleFunc("/api/leaderboard", leaderboardHandler)
 	http.HandleFunc("/api/reset", resetHandler)
+	http.HandleFunc("/api/skills", skillsHandler)
+	http.HandleFunc("/api/skills/upgrade", upgradeSkillHandler)
+	http.HandleFunc("/api/quests", questsHandler)
+	http.HandleFunc("/api/achievements", achievementsHandler)
+	http.HandleFunc("/api/study", studyGoHandler)
+	http.HandleFunc("/api/rest", restHandler)
+	http.HandleFunc("/api/backup", backupHandler)
 
 	port := ":8080"
 	fmt.Printf("🚀 Go Quiz Web Server starting on http://localhost%s\n", port)
 	log.Fatal(http.ListenAndServe(port, nil))
 }
 
-// --- Загрузка/сохранение данных ---
+// --- Загрузка вопросов ---
 
 func loadQuestions() error {
 	data, err := os.ReadFile(questionsFile)
@@ -134,55 +165,155 @@ func loadQuestions() error {
 	return json.Unmarshal(data, &questions)
 }
 
-func loadUserData() {
-	data, err := os.ReadFile(dataFile)
+// --- Работа с кэшем игроков ---
+
+func loadPlayersCache() {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+
+	rows, err := database.DB.Query("SELECT user_id, name, level, experience, go_knowledge, focus, willpower, money, dopamine, play_time, days_played, current_day, current_hour, correct_answers, wrong_answers, asked_questions, created_at FROM players")
 	if err != nil {
-		log.Println("Файл пользователей не найден, начинаем с пустой статистикой")
+		log.Println("⚠️  Не удалось загрузить игроков из БД:", err)
 		return
 	}
-	err = json.Unmarshal(data, &users)
-	if err != nil {
-		log.Println("Ошибка парсинга users.json, используем пустую статистику")
-	}
-}
+	defer rows.Close()
 
-func saveUserData() {
-	usersMu.RLock()
-	defer usersMu.RUnlock()
-	
-	data, _ := json.MarshalIndent(users, "", "  ")
-	if err := os.WriteFile(dataFile, data, 0644); err != nil {
-		log.Println("Ошибка сохранения данных пользователей:", err)
-	} else {
-		log.Println("Данные пользователей сохранены")
-	}
-}
+	count := 0
+	for rows.Next() {
+		var player game.Player
+		var askedQuestionsStr string
+		var createdAt time.Time
 
-// --- Работа с пользователями ---
-
-func getUser(userID string) *UserData {
-	usersMu.Lock()
-	defer usersMu.Unlock()
-	
-	if _, ok := users[userID]; !ok {
-		users[userID] = &UserData{
-			ID:             userID,
-			TotalEXP:       0,
-			CorrectAnswers: 0,
-			WrongAnswers:   0,
-			Level:          1,
-			AskedQuestions: []int{},
-			CreatedAt:      time.Now(),
+		err := rows.Scan(
+			&player.ID, &player.Name, &player.Level, &player.Experience,
+			&player.GoKnowledge, &player.Focus, &player.Willpower,
+			&player.Money, &player.Dopamine, &player.PlayTime,
+			&player.DaysPlayed, &player.CurrentDay, &player.CurrentHour,
+			&player.CorrectAnswers, &player.WrongAnswers,
+			&askedQuestionsStr, &createdAt,
+		)
+		if err != nil {
+			log.Println("⚠️  Ошибка сканирования игрока:", err)
+			continue
 		}
+
+		json.Unmarshal([]byte(askedQuestionsStr), &player.AskedQuestions)
+		player.CreatedAt = createdAt
+		player.SkillBonuses = make(map[string]int)
+
+		playersCache[player.ID] = &player
+		count++
 	}
-	return users[userID]
+
+	log.Printf("👥 Загружено %d игроков из БД", count)
 }
 
-func updateLevel(user *UserData) {
-	newLevel := int(math.Floor(float64(user.TotalEXP)/100)) + 1
-	if newLevel > user.Level {
-		user.Level = newLevel
+func getPlayer(userID string) *game.Player {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+
+	if player, ok := playersCache[userID]; ok {
+		return player
 	}
+
+	// Создаём нового игрока
+	player := game.NewPlayer(userID, "Player"+userID[len(userID)-4:])
+	playersCache[userID] = player
+
+	// Сохраняем в БД
+	savePlayerToDB(player)
+
+	// Создаём дерево навыков
+	skillTree := game.NewSkillTree(userID)
+	skillTreesCache[userID] = skillTree
+
+	// Создаём систему квестов
+	questSystem := game.NewQuestSystem(userID)
+	questSystemsCache[userID] = questSystem
+
+	// Создаём систему достижений
+	achievements := game.NewAchievementSystem(userID)
+	achievementsCache[userID] = achievements
+
+	// Применяем бонусы от навыков
+	player.ApplySkillBonuses(skillTree)
+
+	return player
+}
+
+func getSkillTree(userID string) *game.SkillTree {
+	cacheMu.RLock()
+	if tree, ok := skillTreesCache[userID]; ok {
+		cacheMu.RUnlock()
+		return tree
+	}
+	cacheMu.RUnlock()
+
+	// Загружаем из БД или создаём новое
+	tree := loadSkillTreeFromDB(userID)
+	if tree == nil {
+		tree = game.NewSkillTree(userID)
+	}
+
+	cacheMu.Lock()
+	skillTreesCache[userID] = tree
+	cacheMu.Unlock()
+
+	return tree
+}
+
+func getQuestSystem(userID string) *game.QuestSystem {
+	cacheMu.RLock()
+	if qs, ok := questSystemsCache[userID]; ok {
+		cacheMu.RUnlock()
+		return qs
+	}
+	cacheMu.RUnlock()
+
+	qs := loadQuestSystemFromDB(userID)
+	if qs == nil {
+		qs = game.NewQuestSystem(userID)
+	}
+
+	cacheMu.Lock()
+	questSystemsCache[userID] = qs
+	cacheMu.Unlock()
+
+	return qs
+}
+
+func getAchievements(userID string) *game.AchievementSystem {
+	cacheMu.RLock()
+	if as, ok := achievementsCache[userID]; ok {
+		cacheMu.RUnlock()
+		return as
+	}
+	cacheMu.RUnlock()
+
+	as := loadAchievementsFromDB(userID)
+	if as == nil {
+		as = game.NewAchievementSystem(userID)
+	}
+
+	cacheMu.Lock()
+	achievementsCache[userID] = as
+	cacheMu.Unlock()
+
+	return as
+}
+
+func saveAllPlayers() {
+	cacheMu.RLock()
+	defer cacheMu.RUnlock()
+
+	for _, player := range playersCache {
+		savePlayerToDB(player)
+		saveSkillTreeToDB(player.ID, skillTreesCache[player.ID])
+		saveQuestSystemToDB(player.ID, questSystemsCache[player.ID])
+		saveAchievementsToDB(player.ID, achievementsCache[player.ID])
+	}
+
+	log.Println("💾 Все игроки сохранены в БД")
 }
 
 // --- Handlers ---
@@ -196,730 +327,53 @@ var tmpl = template.Must(template.New("index").Parse(`
     <title>Go Quiz - Викторина по языку Go</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/modern.css">
-    <style>
-        /* Material Design Color Palette */
-        :root {
-            /* Dark Theme Colors */
-            --md-primary: #00d9ff;
-            --md-primary-variant: #00b8d9;
-            --md-secondary: #00ff88;
-            --md-secondary-variant: #00e676;
-            --md-background: #1a1a2e;
-            --md-background-variant: #16213e;
-            --md-surface: #242442;
-            --md-surface-variant: #2d2d4a;
-            --md-error: #ff5252;
-            --md-success: #00e676;
-            --md-warning: #ffb74d;
-            --md-text-primary: #ffffff;
-            --md-text-secondary: rgba(255, 255, 255, 0.7);
-            --md-text-disabled: rgba(255, 255, 255, 0.5);
-            --md-divider: rgba(255, 255, 255, 0.12);
-            
-            /* Elevation Shadows */
-            --elevation-1: 0 1px 3px rgba(0,0,0,0.2), 0 1px 1px rgba(0,0,0,0.14), 0 2px 1px -1px rgba(0,0,0,0.12);
-            --elevation-2: 0 1px 5px rgba(0,0,0,0.2), 0 2px 2px rgba(0,0,0,0.14), 0 3px 1px -2px rgba(0,0,0,0.12);
-            --elevation-3: 0 1px 8px rgba(0,0,0,0.2), 0 3px 4px rgba(0,0,0,0.14), 0 3px 3px -2px rgba(0,0,0,0.12);
-            --elevation-4: 0 2px 4px rgba(0,0,0,0.2), 0 4px 5px rgba(0,0,0,0.14), 0 1px 10px rgba(0,0,0,0.12);
-            --elevation-8: 0 5px 5px rgba(0,0,0,0.2), 0 8px 10px rgba(0,0,0,0.14), 0 3px 14px rgba(0,0,0,0.12);
-            
-            /* Animation */
-            --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-            --transition-standard: 250ms cubic-bezier(0.4, 0, 0.2, 1);
-            --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        
-        body.light-theme {
-            --md-primary: #1976d2;
-            --md-primary-variant: #1565c0;
-            --md-secondary: #388e3c;
-            --md-secondary-variant: #2e7d32;
-            --md-background: #fafafa;
-            --md-background-variant: #f5f5f5;
-            --md-surface: #ffffff;
-            --md-surface-variant: #f8f9fa;
-            --md-error: #d32f2f;
-            --md-success: #388e3c;
-            --md-warning: #f57c00;
-            --md-text-primary: #212121;
-            --md-text-secondary: rgba(0, 0, 0, 0.6);
-            --md-text-disabled: rgba(0, 0, 0, 0.38);
-            --md-divider: rgba(0, 0, 0, 0.12);
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            min-height: 100vh;
-            background: linear-gradient(135deg, var(--md-background) 0%, var(--md-background-variant) 50%, var(--md-surface) 100%);
-            color: var(--md-text-primary);
-            transition: background var(--transition-slow), color var(--transition-standard);
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-        }
-        .container {
-            max-width: 960px;
-            margin: 0 auto;
-            padding: 16px;
-        }
-        @media (min-width: 600px) {
-            .container { padding: 24px; }
-        }
-        @media (min-width: 960px) {
-            .container { padding: 32px; }
-        }
-        header {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-            align-items: center;
-            padding: 16px 0;
-            margin-bottom: 24px;
-        }
-        @media (min-width: 600px) {
-            header {
-                padding: 20px 0;
-                margin-bottom: 32px;
-            }
-        }
-        .logo {
-            font-size: 1.5rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--md-primary), var(--md-secondary));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            letter-spacing: -0.5px;
-        }
-        @media (min-width: 600px) {
-            .logo { font-size: 1.8rem; }
-        }
-        .header-actions {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        .theme-toggle, .nav-btn {
-            background: transparent;
-            border: none;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all var(--transition-fast);
-            font-size: 1.2rem;
-            color: var(--md-text-primary);
-            position: relative;
-            overflow: hidden;
-        }
-        .theme-toggle:hover, .nav-btn:hover {
-            background: rgba(128, 128, 128, 0.1);
-        }
-        .nav-btn {
-            border-radius: 20px;
-            width: auto;
-            padding: 0 16px;
-            font-size: 0.875rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.75px;
-            height: 36px;
-        }
-        @media (min-width: 600px) {
-            .nav-btn {
-                font-size: 0.9rem;
-                padding: 0 20px;
-                height: 40px;
-            }
-        }
-        .nav-btn.active {
-            background: linear-gradient(135deg, var(--md-primary), var(--md-secondary));
-            color: #fff;
-            box-shadow: var(--elevation-2);
-        }
-        .nav-btn.active:hover {
-            box-shadow: var(--elevation-4);
-        }
-        /* Main Content */
-        .main-content {
-            min-height: 60vh;
-        }
-        .page {
-            display: none;
-            animation: fadeIn 0.3s ease;
-        }
-        .page.active {
-            display: block;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        /* Home Page */
-        .hero {
-            text-align: center;
-            padding: 60px 20px;
-        }
-        .hero h1 {
-            font-size: 3rem;
-            margin-bottom: 20px;
-            background: linear-gradient(135deg, #00d9ff, #00ff88);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        body.light-theme .hero h1 {
-            background: linear-gradient(135deg, #1a1a2e, #0f3460);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        .hero p {
-            font-size: 1.2rem;
-            color: #aaa;
-            margin-bottom: 40px;
-        }
-        body.light-theme .hero p {
-            color: var(--md-text-secondary);
-        }
-        .start-btn {
-            background: linear-gradient(135deg, var(--md-primary), var(--md-secondary));
-            border: none;
-            border-radius: 28px;
-            padding: 16px 40px;
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: #fff;
-            cursor: pointer;
-            transition: all var(--transition-standard);
-            box-shadow: var(--elevation-4);
-            text-transform: uppercase;
-            letter-spacing: 0.75px;
-        }
-        @media (min-width: 600px) {
-            .start-btn {
-                padding: 18px 50px;
-                font-size: 1.2rem;
-            }
-        }
-        .start-btn:hover {
-            transform: translateY(-4px);
-            box-shadow: var(--elevation-8);
-        }
-        .features {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 30px;
-            margin-top: 48px;
-        }
-        @media (min-width: 600px) {
-            .features { gap: 24px; }
-        }
-        .feature-card {
-            background: var(--md-surface);
-            border-radius: 16px;
-            padding: 24px;
-            text-align: center;
-            border: 1px solid var(--md-divider);
-            box-shadow: var(--elevation-2);
-            transition: all var(--transition-standard);
-        }
-        @media (min-width: 600px) {
-            .feature-card { padding: 32px; }
-        }
-        .feature-card:hover {
-            box-shadow: var(--elevation-8);
-            transform: translateY(-4px);
-        }
-        .feature-icon {
-            font-size: 3rem;
-            margin-bottom: 15px;
-        }
-        .feature-card h3 {
-            margin-bottom: 10px;
-        }
-        /* Quiz Page */
-        .quiz-container {
-            background: var(--md-surface);
-            border-radius: 16px;
-            padding: 24px;
-            border: 1px solid var(--md-divider);
-            box-shadow: var(--elevation-4);
-        }
-        @media (min-width: 600px) {
-            .quiz-container { padding: 32px; }
-        }
-        .quiz-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 24px;
-            font-size: 0.875rem;
-            color: var(--md-text-secondary);
-            font-weight: 500;
-        }
-        .progress-bar {
-            width: 100%;
-            height: 6px;
-            background: var(--md-divider);
-            border-radius: 10px;
-            overflow: hidden;
-            margin-bottom: 24px;
-        }
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(135deg, var(--md-primary), var(--md-secondary));
-            transition: width var(--transition-standard);
-        }
-        .question-text {
-            font-size: 1.2rem;
-            margin-bottom: 24px;
-            line-height: 1.6;
-            font-weight: 500;
-        }
-        @media (min-width: 600px) {
-            .question-text { font-size: 1.4rem; }
-        }
-        .options {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-        .option-btn {
-            background: var(--md-surface);
-            border: 2px solid var(--md-divider);
-            border-radius: 12px;
-            padding: 16px 20px;
-            text-align: left;
-            cursor: pointer;
-            transition: all var(--transition-fast);
-            font-size: 0.95rem;
-            color: var(--md-text-primary);
-            font-weight: 500;
-            box-shadow: var(--elevation-1);
-        }
-        .option-btn:hover {
-            border-color: var(--md-primary);
-            background: rgba(0, 217, 255, 0.08);
-            box-shadow: var(--elevation-3);
-            transform: translateX(4px);
-        }
-        .option-btn.correct {
-            background: rgba(0, 230, 118, 0.15);
-            border-color: var(--md-success);
-            box-shadow: 0 0 20px rgba(0, 230, 118, 0.4), inset 0 0 10px rgba(0, 230, 118, 0.1);
-            animation: correctPulse 0.5s ease-out;
-        }
-        .option-btn.wrong {
-            background: rgba(255, 82, 82, 0.15);
-            border-color: var(--md-error);
-            box-shadow: 0 0 20px rgba(255, 82, 82, 0.4), inset 0 0 10px rgba(255, 82, 82, 0.1);
-            animation: wrongShake 0.4s ease-out;
-        }
-        @keyframes correctPulse {
-            0% { transform: scale(1); box-shadow: 0 0 0 rgba(0,255,136,0); }
-            50% { transform: scale(1.05); box-shadow: 0 0 35px rgba(0,255,136,0.7); }
-            100% { transform: scale(1.02); box-shadow: 0 0 25px rgba(0,255,136,0.5); }
-        }
-        @keyframes wrongShake {
-            0%, 100% { transform: translateX(0); }
-            20% { transform: translateX(-10px); }
-            40% { transform: translateX(10px); }
-            60% { transform: translateX(-10px); }
-            80% { transform: translateX(10px); }
-        }
-        .option-btn.disabled {
-            pointer-events: none;
-            opacity: 0.6;
-        }
-        .quiz-footer {
-            margin-top: 30px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .exp-badge {
-            background: linear-gradient(135deg, var(--md-warning), #ff9800);
-            color: #fff;
-            padding: 8px 16px;
-            border-radius: 16px;
-            font-weight: 600;
-            font-size: 0.875rem;
-            box-shadow: var(--elevation-1);
-        }
-        .next-btn {
-            background: linear-gradient(135deg, var(--md-primary), var(--md-secondary));
-            border: none;
-            border-radius: 20px;
-            padding: 12px 28px;
-            font-size: 0.875rem;
-            font-weight: 600;
-            color: #fff;
-            cursor: pointer;
-            transition: all var(--transition-fast);
-            display: none;
-            text-transform: uppercase;
-            letter-spacing: 0.75px;
-            box-shadow: var(--elevation-2);
-        }
-        .next-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--elevation-4);
-        }
-        .next-btn.visible {
-            display: block;
-        }
-        /* Stats Page */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 40px;
-        }
-        .stat-card {
-            background: var(--md-surface);
-            border-radius: 16px;
-            padding: 20px;
-            text-align: center;
-            border: 1px solid var(--md-divider);
-            box-shadow: var(--elevation-2);
-            transition: all var(--transition-standard);
-        }
-        @media (min-width: 600px) {
-            .stat-card { padding: 28px; }
-        }
-        .stat-card:hover {
-            box-shadow: var(--elevation-4);
-            transform: translateY(-2px);
-        }
-        .stat-value {
-            font-size: 2rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--md-primary), var(--md-secondary));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        @media (min-width: 600px) {
-            .stat-value { font-size: 2.5rem; }
-        }
-        .stat-label {
-            color: var(--md-text-secondary);
-            margin-top: 10px;
-            font-size: 0.875rem;
-        }
-        /* Leaderboard */
-        .leaderboard-table {
-            width: 100%;
-            border-collapse: collapse;
-            background: var(--md-surface);
-            border-radius: 16px;
-            overflow: hidden;
-            border: 1px solid var(--md-divider);
-            box-shadow: var(--elevation-2);
-        }
-        .leaderboard-table th,
-        .leaderboard-table td {
-            padding: 16px 20px;
-            text-align: left;
-        }
-        @media (min-width: 600px) {
-            .leaderboard-table th,
-            .leaderboard-table td { padding: 18px 25px; }
-        }
-        .leaderboard-table th {
-            background: rgba(128, 128, 128, 0.1);
-            font-weight: 600;
-            text-transform: uppercase;
-            font-size: 0.75rem;
-            letter-spacing: 1px;
-            color: var(--md-text-secondary);
-        }
-        .leaderboard-table tr:not(:last-child) {
-            border-bottom: 1px solid var(--md-divider);
-        }
-        .rank-1 { background: linear-gradient(90deg, rgba(255,215,0,0.2), transparent); }
-        .rank-2 { background: linear-gradient(90deg, rgba(192,192,192,0.2), transparent); }
-        .rank-3 { background: linear-gradient(90deg, rgba(205,127,50,0.2), transparent); }
-        .rank-badge {
-            display: inline-block;
-            width: 35px;
-            height: 35px;
-            line-height: 35px;
-            text-align: center;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.1);
-            font-weight: 700;
-        }
-        .rank-1 .rank-badge { background: linear-gradient(135deg, #ffd700, #ffaa00); color: #1a1a2e; }
-        .rank-2 .rank-badge { background: linear-gradient(135deg, #c0c0c0, #a0a0a0); color: #1a1a2e; }
-        .rank-3 .rank-badge { background: linear-gradient(135deg, #cd7f32, #b87333); color: #fff; }
-        /* Reset button */
-        .reset-section {
-            text-align: center;
-            margin-top: 40px;
-            padding-top: 30px;
-            border-top: 1px solid rgba(255,255,255,0.1);
-        }
-        body.light-theme .reset-section {
-            border-top: 1px solid var(--md-divider);
-        }
-        .reset-btn {
-            background: transparent;
-            border: 2px solid var(--md-error);
-            color: var(--md-error);
-            border-radius: 20px;
-            padding: 10px 28px;
-            cursor: pointer;
-            transition: all var(--transition-fast);
-            font-size: 0.875rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.75px;
-        }
-        .reset-btn:hover {
-            background: rgba(255, 82, 82, 0.1);
-            box-shadow: var(--elevation-2);
-            transform: translateY(-2px);
-        }
-        /* Mobile */
-        @media (max-width: 600px) {
-            .hero h1 { font-size: 1.75rem; }
-            .quiz-container { padding: 20px; }
-            .question-text { font-size: 1rem; }
-            .option-btn { padding: 14px 16px; font-size: 0.9rem; }
-            header { gap: 12px; }
-            .nav-btn { font-size: 0.75rem; padding: 0 12px; height: 32px; }
-            .leaderboard-table th,
-            .leaderboard-table td { padding: 12px 14px; font-size: 0.8rem; }
-        }
-
-        /* Interview Prep Page */
-        .interview-container {
-            max-width: 700px;
-            margin: 0 auto;
-            padding: 20px 0;
-        }
-        .card-stack {
-            position: relative;
-            height: 500px;
-            perspective: 1000px;
-        }
-        @media (max-width: 600px) {
-            .card-stack { height: 450px; }
-        }
-        .interview-card {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: var(--md-surface);
-            border-radius: 20px;
-            border: 1px solid var(--md-divider);
-            box-shadow: var(--elevation-8);
-            padding: 32px;
-            display: flex;
-            flex-direction: column;
-            transition: all var(--transition-slow);
-            transform-origin: center center;
-            backface-visibility: hidden;
-        }
-        .interview-card.swipe-left {
-            transform: translateX(-150%) rotate(-30deg);
-            opacity: 0;
-        }
-        .interview-card.swipe-right {
-            transform: translateX(150%) rotate(30deg);
-            opacity: 0;
-        }
-        .interview-card.fade-out {
-            transform: scale(0.9);
-            opacity: 0;
-        }
-        .interview-card.fade-in {
-            animation: cardFadeIn 0.4s ease-out forwards;
-        }
-        @keyframes cardFadeIn {
-            from {
-                opacity: 0;
-                transform: scale(1.1) translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: scale(1) translateY(0);
-            }
-        }
-        .card-question {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: var(--md-text-primary);
-            line-height: 1.5;
-            margin-bottom: 24px;
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
-        }
-        .card-question::before {
-            content: '💡';
-            font-size: 1.5rem;
-            flex-shrink: 0;
-        }
-        .card-answer {
-            flex: 1;
-            overflow-y: auto;
-            color: var(--md-text-secondary);
-            line-height: 1.8;
-            font-size: 0.95rem;
-            opacity: 0;
-            transform: translateY(20px);
-            transition: all var(--transition-standard);
-            max-height: 0;
-        }
-        .card-answer.visible {
-            opacity: 1;
-            transform: translateY(0);
-            max-height: 500px;
-        }
-        .card-answer p, .card-answer ul, .card-answer ol {
-            margin: 0 0 16px;
-        }
-        .card-answer ul, .card-answer ol {
-            padding-left: 24px;
-        }
-        .card-answer li {
-            margin-bottom: 8px;
-        }
-        .card-answer code {
-            font-family: 'Fira Code', monospace;
-            background: rgba(128, 128, 128, 0.15);
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 0.85rem;
-        }
-        .card-answer pre {
-            background: var(--md-background);
-            border-radius: 8px;
-            padding: 16px;
-            overflow-x: auto;
-            margin: 16px 0;
-        }
-        .card-answer pre code {
-            background: transparent;
-            padding: 0;
-        }
-        .interview-controls {
-            display: flex;
-            justify-content: center;
-            gap: 16px;
-            margin-top: 24px;
-        }
-        .control-btn {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 14px 28px;
-            border: none;
-            border-radius: 28px;
-            font-size: 0.95rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all var(--transition-fast);
-            text-transform: uppercase;
-            letter-spacing: 0.75px;
-        }
-        .skip-btn {
-            background: transparent;
-            border: 2px solid var(--md-error);
-            color: var(--md-error);
-        }
-        .skip-btn:hover {
-            background: rgba(255, 82, 82, 0.1);
-            transform: translateY(-2px);
-            box-shadow: var(--elevation-2);
-        }
-        .show-answer-btn {
-            background: linear-gradient(135deg, var(--md-primary), var(--md-secondary));
-            color: #fff;
-        }
-        .show-answer-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--elevation-4);
-        }
-        .progress-indicator {
-            text-align: center;
-            margin-top: 20px;
-            color: var(--md-text-secondary);
-            font-size: 0.9rem;
-            font-weight: 600;
-        }
-        .completed-message {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            color: var(--md-text-secondary);
-        }
-        .completed-message h3 {
-            font-size: 1.5rem;
-            margin-bottom: 12px;
-            color: var(--md-success);
-        }
-    </style>
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <div class="container">
         <header>
             <div class="logo">🧠 Go Quiz</div>
             <div class="header-actions">
-                <button class="nav-btn" onclick="showPage('home')">🏠 Главная</button>
-                <button class="nav-btn" onclick="showPage('quiz')">🎯 Викторина</button>
-                <button class="nav-btn" onclick="showPage('interview')">💼 Собеседование</button>
-                <button class="nav-btn" onclick="showPage('stats')">📊 Статистика</button>
-                <button class="nav-btn" onclick="showPage('leaderboard')">🏆 Лидеры</button>
-                <button class="theme-toggle" onclick="toggleTheme()" title="Переключить тему">
-                    <span id="theme-icon">☀️</span>
-                </button>
+                <button class="nav-btn" onclick="showPage('home')">🏠</button>
+                <button class="nav-btn" onclick="showPage('quiz')">🎯</button>
+                <button class="nav-btn" onclick="showPage('study')">📚</button>
+                <button class="nav-btn" onclick="showPage('skills')">🌳</button>
+                <button class="nav-btn" onclick="showPage('quests')">📋</button>
+                <button class="nav-btn" onclick="showPage('achievements')">🏆</button>
+                <button class="nav-btn" onclick="showPage('stats')">📊</button>
+                <button class="nav-btn" onclick="showPage('leaderboard')">👑</button>
+                <button class="theme-toggle" onclick="toggleTheme()">☀️</button>
             </div>
         </header>
 
         <main class="main-content">
-            <!-- Home Page -->
+            <!-- Home -->
             <div id="home" class="page active">
                 <div class="hero">
-                    <h1>Проверь свои знания Go</h1>
-                    <p>Интерактивная викторина по языку программирования Go.<br>
-                    Отвечай на вопросы, получай EXP и соревнуйся с другими!</p>
-                    <button class="start-btn" onclick="startQuiz()">🚀 Начать викторину</button>
+                    <h1>Прокачай знания Go</h1>
+                    <p>Викторина + RPG элементы: уровни, навыки, достижения!</p>
+                    <button class="start-btn" onclick="startQuiz()">🚀 Начать</button>
                 </div>
                 <div class="features">
                     <div class="feature-card">
                         <div class="feature-icon">📚</div>
                         <h3>{{.TotalQuestions}} вопросов</h3>
-                        <p>Разные темы и уровни сложности</p>
+                        <p>Разные темы и сложности</p>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon">🎮</div>
-                        <h3>Геймификация</h3>
-                        <p>EXP, уровни и таблица лидеров</p>
+                        <div class="feature-icon">🌳</div>
+                        <h3>Навыки</h3>
+                        <p>12 навыков в 4 категориях</p>
                     </div>
                     <div class="feature-card">
-                        <div class="feature-icon">💾</div>
-                        <h3>Сохранение</h3>
-                        <p>Прогресс сохраняется автоматически</p>
+                        <div class="feature-icon">🏆</div>
+                        <h3>Достижения</h3>
+                        <p>23 достижения для коллекции</p>
                     </div>
                 </div>
             </div>
 
-            <!-- Quiz Page -->
+            <!-- Quiz -->
             <div id="quiz" class="page">
                 <div class="quiz-container">
                     <div class="quiz-header">
@@ -929,20 +383,79 @@ var tmpl = template.Must(template.New("index").Parse(`
                     <div class="progress-bar">
                         <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
                     </div>
-                    <div class="question-text" id="question-text">Загрузка вопроса...</div>
-                    <div class="options" id="options-container">
-                        <!-- Options will be inserted here -->
-                    </div>
+                    <div class="question-text" id="question-text">Загрузка...</div>
+                    <div class="options" id="options-container"></div>
                     <div class="quiz-footer">
                         <div class="exp-badge" id="exp-display">EXP: 0</div>
-                        <button class="next-btn" id="next-btn" onclick="nextQuestion()">Следующий вопрос →</button>
+                        <button class="next-btn" id="next-btn" onclick="nextQuestion()">Далее →</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Stats Page -->
+            <!-- Study -->
+            <div id="study" class="page">
+                <h2 style="margin-bottom: 30px; text-align: center;">📚 Обучение и отдых</h2>
+                <div class="action-cards">
+                    <div class="action-card" onclick="studyGo(30)">
+                        <div class="action-icon">📖</div>
+                        <div class="action-title">Изучить Go (30 мин)</div>
+                        <div class="action-desc">+15 EXP, +6 Знание Go, +10 Дофамин</div>
+                        <div class="action-reward">🎯 Квест: 30 минут Go</div>
+                    </div>
+                    <div class="action-card" onclick="studyGo(60)">
+                        <div class="action-icon">📖</div>
+                        <div class="action-title">Изучить Go (60 мин)</div>
+                        <div class="action-desc">+30 EXP, +12 Знание Go, +20 Дофамин</div>
+                        <div class="action-reward">🎯 Квест: 30 минут Go</div>
+                    </div>
+                    <div class="action-card" onclick="rest(15)">
+                        <div class="action-icon">💤</div>
+                        <div class="action-title">Отдохнуть (15 мин)</div>
+                        <div class="action-desc">+7 Фокус, +5 Дофамин</div>
+                        <div class="action-reward">😌 Восстановление</div>
+                    </div>
+                    <div class="action-card" onclick="rest(30)">
+                        <div class="action-icon">💤</div>
+                        <div class="action-title">Отдохнуть (30 мин)</div>
+                        <div class="action-desc">+15 Фокус, +10 Дофамин</div>
+                        <div class="action-reward">😌 Восстановление</div>
+                    </div>
+                </div>
+                <div style="text-align: center;">
+                    <button class="backup-btn" onclick="createBackup()">💾 Создать бэкап</button>
+                </div>
+            </div>
+
+            <!-- Skills -->
+            <div id="skills" class="page">
+                <h2 style="margin-bottom: 20px; text-align: center;">🌳 Дерево навыков</h2>
+                <div class="skill-points-display" id="skill-points-display">
+                    ✨ Очки навыков: 0 (всего: 0)
+                </div>
+                <div class="skills-container" id="skills-container">
+                    Загрузка...
+                </div>
+            </div>
+
+            <!-- Quests -->
+            <div id="quests" class="page">
+                <h2 style="margin-bottom: 20px; text-align: center;">📋 Ежедневные квесты</h2>
+                <div class="quests-container" id="quests-container">
+                    Загрузка...
+                </div>
+            </div>
+
+            <!-- Achievements -->
+            <div id="achievements" class="page">
+                <h2 style="margin-bottom: 20px; text-align: center;">🏆 Достижения</h2>
+                <div class="achievements-container" id="achievements-container">
+                    Загрузка...
+                </div>
+            </div>
+
+            <!-- Stats -->
             <div id="stats" class="page">
-                <h2 style="margin-bottom: 30px; text-align: center;">📊 Твоя статистика</h2>
+                <h2 style="margin-bottom: 30px; text-align: center;">📊 Статистика</h2>
                 <div class="stats-grid" id="stats-grid">
                     <div class="stat-card">
                         <div class="stat-value" id="stat-level">-</div>
@@ -961,8 +474,20 @@ var tmpl = template.Must(template.New("index").Parse(`
                         <div class="stat-label">Неправильных</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value" id="stat-progress">-</div>
-                        <div class="stat-label">Прогресс</div>
+                        <div class="stat-value" id="stat-knowledge">-</div>
+                        <div class="stat-label">Знание Go</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-focus">-</div>
+                        <div class="stat-label">Фокус</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-willpower">-</div>
+                        <div class="stat-label">Сила воли</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-rating">-</div>
+                        <div class="stat-label">Рейтинг</div>
                     </div>
                 </div>
                 <div class="reset-section">
@@ -970,482 +495,38 @@ var tmpl = template.Must(template.New("index").Parse(`
                 </div>
             </div>
 
-            <!-- Leaderboard Page -->
+            <!-- Leaderboard -->
             <div id="leaderboard" class="page">
-                <h2 style="margin-bottom: 30px; text-align: center;">🏆 Таблица лидеров</h2>
+                <h2 style="margin-bottom: 30px; text-align: center;">👑 Таблица лидеров</h2>
                 <table class="leaderboard-table">
                     <thead>
                         <tr>
                             <th>#</th>
                             <th>Игрок</th>
                             <th>Уровень</th>
-                            <th>EXP</th>
+                            <th>Рейтинг</th>
                             <th>Правильных</th>
                         </tr>
                     </thead>
-                    <tbody id="leaderboard-body">
-                        <!-- Leaderboard entries will be inserted here -->
-                    </tbody>
+                    <tbody id="leaderboard-body"></tbody>
                 </table>
-            </div>
-
-            <!-- Interview Prep Page -->
-            <div id="interview" class="page">
-                <h2 style="margin-bottom: 10px; text-align: center;">💼 Gopher, Go Offer</h2>
-                <p style="text-align: center; color: var(--md-text-secondary); margin-bottom: 30px;">Вопросы с собеседований для подготовки</p>
-                
-                <div class="interview-container">
-                    <div class="card-stack" id="card-stack">
-                        <!-- Cards will be inserted here by JS -->
-                    </div>
-                    
-                    <div class="interview-controls">
-                        <button class="control-btn skip-btn" onclick="skipCard()" title="Пропустить вопрос">
-                            <span>✕</span>
-                            <span>Пропустить</span>
-                        </button>
-                        <button class="control-btn show-answer-btn" onclick="showAnswer()" title="Показать ответ">
-                            <span>👁</span>
-                            <span>Ответ</span>
-                        </button>
-                    </div>
-                    
-                    <div class="progress-indicator" id="progress-indicator">
-                        <span id="current-card-num">1</span> / <span id="total-cards">26</span>
-                    </div>
-                </div>
             </div>
         </main>
     </div>
-
-    <script>
-        // User ID stored in localStorage
-        let userId = localStorage.getItem('goquiz_user_id');
-        if (!userId) {
-            userId = 'user_' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('goquiz_user_id', userId);
-        }
-
-        // Set cookie for server to read
-        document.cookie = "user_id=" + userId + "; path=/; max-age=31536000";
-
-        // Helper to get headers with user ID
-        function getHeaders() {
-            return {
-                'Content-Type': 'application/json',
-                'X-User-ID': userId
-            };
-        }
-
-        let currentQuestion = null;
-        let answered = false;
-
-        // Theme toggle
-        const savedTheme = localStorage.getItem('goquiz_theme');
-        if (savedTheme === 'light') {
-            document.body.classList.add('light-theme');
-            document.getElementById('theme-icon').textContent = '🌙';
-        }
-
-        function toggleTheme() {
-            document.body.classList.toggle('light-theme');
-            const icon = document.getElementById('theme-icon');
-            if (document.body.classList.contains('light-theme')) {
-                icon.textContent = '🌙';
-                localStorage.setItem('goquiz_theme', 'light');
-            } else {
-                icon.textContent = '☀️';
-                localStorage.setItem('goquiz_theme', 'dark');
-            }
-        }
-
-        // Toggle interview Q&A answer
-        function toggleAnswer(element) {
-            const card = element.closest('.qa-card');
-            card.classList.toggle('active');
-        }
-
-        // Interview cards data
-        const interviewCards = [
-            {
-                question: "Как реализовано ООП в Go?",
-                answer: "<p>В Go нет классической реализации ООП, так как он не объектно-ориентированный язык. При этом в Go есть свои приближения:</p><ul><li><strong>Структуры</strong> — типы, в которые можно включать другие типы</li><li><strong>Методы</strong> — функции с получателем</li><li><strong>Интерфейсы</strong> — контракты на поведение</li></ul>"
-            },
-            {
-                question: "Как реализовано наследование в Go?",
-                answer: "<p>Как такового наследования в Go нет, но есть <strong>встраивание (embedding) структур</strong>. Мы можем включать одни структуры в другие. При этом методы встраиваемой структуры становятся доступны в родительской.</p><p><strong>Если в родительской и дочерней структуре есть методы с одинаковым названием</strong> — реализация родительского метода будет переписана реализацией дочернего метода.</p>"
-            },
-            {
-                question: "Как реализована инкапсуляция в Go?",
-                answer: "<p>Инкапсуляция в Go реализована через <strong>регистр первой буквы</strong> названия:</p><ul><li><strong>Верхний регистр</strong> (Exported) — доступно за рамками пакета</li><li><strong>Нижний регистр</strong> (Unexported) — доступно только в рамках пакета</li></ul>"
-            },
-            {
-                question: "Как реализован полиморфизм в Go?",
-                answer: "<p>Полиморфизм в Go реализован через <strong>интерфейсы</strong>. Интерфейс — это контракт на определённое поведение. Типы реализуют методы, удовлетворяющие интерфейсу, и мы можем работать со всеми такими типами как с единым интерфейсным типом.</p><p>Реализация интерфейса в Go <strong>неявная</strong> — не нужно объявлять implements.</p>"
-            },
-            {
-                question: "Как работает append для слайсов?",
-                answer: "<p>Функция <code>append</code> принимает слайс и переменное количество элементов. Она расширяет слайс за пределы его <code>len</code>, возвращая новый слайс:</p><ul><li>Если количество элементов не превышает <code>cap</code> — возвращается слайс, ссылающийся на тот же базовый массив</li><li>Если превышает — создаётся новый массив, и возвращается слайс с ссылкой на него</li></ul>"
-            },
-            {
-                question: "Какой размер выделяется при расширении слайса?",
-                answer: "<p>При расширении слайса:</p><ul><li>Если требуемая <code>cap</code> больше чем вдвое исходной — новая <code>cap</code> равна требуемой</li><li>Если <code>len</code> текущего слайса меньше 1024 — новая <code>cap</code> в два раза больше</li><li>Иначе — емкость увеличивается в цикле на 25% пока не будет обработано переполнение</li></ul>"
-            },
-            {
-                question: "Как реализована map в Go?",
-                answer: "<p>Map в Go — структура, реализующая операции хеширования. Ссылается на <strong>bucket</strong> (ведра), каждый содержит:</p><ul><li>8 экстра-бит для доступа к значениям</li><li>Ссылку на следующий коллизионный bucket</li><li>8 пар ключ-значение в массиве</li></ul>"
-            },
-            {
-                question: "Почему нельзя брать ссылку на значение map по ключу?",
-                answer: "<p>Map поддерживает <strong>процедуру эвакуации</strong> — перенос значений из одной области памяти в другую. Значения могут перемещаться, поэтому ссылка на них будет недействительной.</p>"
-            },
-            {
-                question: "Что такое эвакуация в map?",
-                answer: "<p>Эвакуация — процесс переноса значений map из одной области памяти в другую. Происходит когда среднее количество значений в bucket достигает ~6.5 (максимум 8). Начинается расширение map, старые и новые данные связаны на время процесса.</p>"
-            },
-            {
-                question: "Как происходит поиск по ключу в map?",
-                answer: "<ol><li>Вычисляется хэш от ключа</li><li>По хэшу и размеру bucket вычисляется bucket</li><li>Вычисляется дополнительный хэш (первые 8 бит)</li><li>В bucket сравниваются 8 дополнительных хэшей</li><li>При совпадении — возвращается значение</li><li>При несовпадении — переход в следующий bucket</li><li>Если не найдено — дефолтное значение</li></ol>"
-            },
-            {
-                question: "Что такое пустой интерфейс?",
-                answer: "<p><code>interface{}</code> (или <code>any</code> в Go 1.18+) — интерфейс без методов. Ему соответствует <strong>абсолютно любой тип</strong>, так как не нужно реализовывать ни одного метода.</p>"
-            },
-            {
-                question: "Что такое nil интерфейс?",
-                answer: "<p>Интерфейс в Go — структура с ссылкой на значение и itab (служебная информация). <strong>nil интерфейс</strong> не ссылается на значение, но содержит itab. Булево сравнение <code>nil == интерфейс</code> всегда ложное.</p>"
-            },
-            {
-                question: "Как преобразовать интерфейс к типу?",
-                answer: "<p>Используется <strong>type assertion</strong>: <code>value, ok := interfaceValue.(Type)</code></p><ul><li><code>ok == true</code> — преобразование успешно</li><li><code>ok == false</code> — возврат дефолтного значения типа</li></ul>"
-            },
-            {
-                question: "Зачем используется defer?",
-                answer: "<p><code>defer</code> используется для <strong>отложенного вызова функции</strong>. Функция с defer выполняется перед выходом из внешней функции. Аргументы оцениваются немедленно в момент объявления defer.</p>"
-            },
-            {
-                question: "Порядок выполнения нескольких defer?",
-                answer: "<p>defer добавляет функцию в <strong>стек</strong>. При возврате вызовы выполняются в порядке <strong>LIFO</strong> (last in first out) — от последнего к первому.</p>"
-            },
-            {
-                question: "Как работает сборщик мусора в Go?",
-                answer: "<p>GC в Go использует подход <strong>\"пометка и освобождение\"</strong> (mark-and-sweep). Автоматически отслеживает использование памяти и освобождает неиспользуемые ресурсы.</p>"
-            },
-            {
-                question: "Сколько памяти занимает горутина?",
-                answer: "<p>Горутина по умолчанию занимает <strong>2KB стековой памяти</strong>. Стек может расти или уменьшаться динамически по мере необходимости.</p>"
-            },
-            {
-                question: "Способы синхронизации в Go?",
-                answer: "<ul><li><strong>Каналы (channels)</strong> — обмен данными между горутинами</li><li><strong>Мьютексы (mutexes)</strong> — защита доступа к общим данным</li><li><strong>Wait Groups</strong> — координация завершения горутин</li></ul>"
-            },
-            {
-                question: "Сложность поиска по срезу и map?",
-                answer: "<ul><li><strong>Срез (slice)</strong>: O(n) — линейный поиск</li><li><strong>Map</strong>: O(1) — поиск по ключу за константное время</li></ul>"
-            },
-            {
-                question: "Что делает default в select?",
-                answer: "<p><code>default</code> в <code>select</code> выполняется когда <strong>ни один из каналов не готов</strong> для обмена сообщениями. Позволяет избежать блокировки.</p>"
-            },
-            {
-                question: "Что такое nil канал?",
-                answer: "<p>Nil канал — неинициализированный канал (не создан через <code>make</code>).</p><ul><li><strong>Чтение из nil канала</strong> — блокировка навсегда</li><li><strong>Запись в nil канал</strong> — блокировка навсегда</li></ul>"
-            },
-            {
-                question: "Безопасен ли слайс для параллелизма?",
-                answer: "<p><strong>Нет, слайс не потокобезопасен</strong>. Внутренняя структура может привести к гонкам данных при доступе из разных горутин. Используйте мьютексы или каналы для синхронизации.</p>"
-            },
-            {
-                question: "Правила выделения переменной в горутине?",
-                answer: "<p>Необходимо <strong>передавать переменные как параметры</strong> при создании горутины, чтобы избежать состояния гонки. Каждая горутина имеет собственный стек, но доступ к общей памяти может быть проблематичным.</p>"
-            },
-            {
-                question: "Паттерн Singleton в Go?",
-                answer: "<p>Singleton гарантирует один экземпляр класса и глобальную точку доступа. В Go реализуется через <code>sync.Once</code>:</p><pre><code>var once sync.Once\nvar instance *Singleton\n\nfunc GetInstance() *Singleton {\n    once.Do(func() {\n        instance = &Singleton{}\n    })\n    return instance\n}</code></pre>"
-            },
-            {
-                question: "Как устроены контексты в Go?",
-                answer: "<p><code>context.Context</code> передаётся между горутинами для:</p><ul><li>Управления отменой операций</li><li>Сигнализации об ошибках</li><li>Передачи значений</li><li>Управления временем жизни запросов</li></ul>"
-            },
-            {
-                question: "Как обработать панику с defer и recovery?",
-                answer: "<p><code>recover()</code> вызывается в отложенной функции для обработки паники:</p><pre><code>func safe() {\n    defer func() {\n        if r := recover(); r != nil {\n            fmt.Println(\"Recovered:\", r)\n        }\n    }()\n    panic(\"error\")\n}</code></pre>"
-            }
-        ];
-
-        let currentCardIndex = 0;
-
-        // Render interview card
-        function renderCard(index) {
-            const stack = document.getElementById('card-stack');
-            if (index >= interviewCards.length) {
-                stack.innerHTML = '<div class="completed-message"><h3>🎉 Все вопросы пройдены!</h3><p>Вы просмотрели все вопросы для подготовки к собеседованию.</p></div>';
-                document.getElementById('current-card-num').textContent = interviewCards.length;
-                return;
-            }
-
-            const card = interviewCards[index];
-            stack.innerHTML = '<div class="interview-card fade-in">' +
-                '<div class="card-question">' + card.question + '</div>' +
-                '<div class="card-answer" id="current-answer">' + card.answer + '</div>' +
-                '</div>';
-
-            document.getElementById('current-card-num').textContent = index + 1;
-            document.getElementById('total-cards').textContent = interviewCards.length;
-        }
-
-        // Show answer
-        function showAnswer() {
-            const answer = document.getElementById('current-answer');
-            if (answer) {
-                answer.classList.add('visible');
-            }
-        }
-
-        // Skip card with swipe animation
-        function skipCard() {
-            const card = document.querySelector('.interview-card');
-            if (card) {
-                card.classList.add('swipe-left');
-                setTimeout(() => {
-                    currentCardIndex++;
-                    renderCard(currentCardIndex);
-                }, 300);
-            }
-        }
-
-        // Page navigation
-        function showPage(pageId) {
-            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-            document.getElementById(pageId).classList.add('active');
-
-            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-            if (event && event.target) {
-                event.target.classList.add('active');
-            }
-
-            if (pageId === 'stats') loadStats();
-            if (pageId === 'leaderboard') loadLeaderboard();
-            if (pageId === 'interview') {
-                currentCardIndex = 0;
-                renderCard(currentCardIndex);
-            }
-        }
-
-        // Start quiz
-        async function startQuiz() {
-            showPage('quiz');
-            document.querySelector('[onclick="showPage(\'quiz\')"]').classList.add('active');
-            await loadQuestion();
-        }
-
-        // Load question
-        async function loadQuestion() {
-            answered = false;
-            document.getElementById('next-btn').classList.remove('visible');
-            document.getElementById('options-container').innerHTML = '<p style="text-align:center;color:#888;">Загрузка...</p>';
-
-            try {
-                const res = await fetch('/api/quiz', { headers: getHeaders() });
-                const data = await res.json();
-                
-                if (!data.question) {
-                    document.getElementById('question-text').textContent = '🎉 Вы ответили на все вопросы!';
-                    document.getElementById('options-container').innerHTML = '';
-                    document.getElementById('next-btn').classList.add('visible');
-                    document.getElementById('next-btn').onclick = () => { showPage('home'); };
-                    return;
-                }
-
-                currentQuestion = data.question;
-                document.getElementById('question-text').textContent = currentQuestion.question;
-                document.getElementById('question-counter').textContent =
-                    'Вопрос ' + (data.answered + 1) + ' из ' + data.total;
-                document.getElementById('progress-fill').style.width =
-                    ((data.answered / data.total) * 100) + '%';
-
-                // Render options
-                const container = document.getElementById('options-container');
-                container.innerHTML = '';
-                currentQuestion.options.forEach((opt, idx) => {
-                    const btn = document.createElement('button');
-                    btn.className = 'option-btn';
-                    btn.textContent = opt;
-                    btn.onclick = () => selectAnswer(idx, btn);
-                    container.appendChild(btn);
-                });
-
-                // Update level display
-                await updateStatsDisplay();
-            } catch (err) {
-                console.error('Error loading question:', err);
-                document.getElementById('question-text').textContent = 'Ошибка загрузки вопроса';
-            }
-        }
-
-        // Select answer
-        async function selectAnswer(optionIndex, btn) {
-            if (answered) return;
-            answered = true;
-
-            // Disable all buttons
-            document.querySelectorAll('.option-btn').forEach(b => b.classList.add('disabled'));
-
-            try {
-                const res = await fetch('/api/answer', {
-                    method: 'POST',
-                    headers: getHeaders(),
-                    body: JSON.stringify({
-                        question_id: currentQuestion.id,
-                        option_index: optionIndex
-                    })
-                });
-                const data = await res.json();
-
-                // Highlight correct/wrong
-                if (data.correct) {
-                    btn.classList.add('correct');
-                } else {
-                    btn.classList.add('wrong');
-                    // Highlight correct answer
-                    document.querySelectorAll('.option-btn')[data.correct_option].classList.add('correct');
-                }
-
-                // Update EXP display
-                document.getElementById('exp-display').textContent = 'EXP: ' + data.new_exp;
-                document.getElementById('level-display').textContent = 'Уровень ' + data.new_level;
-
-                // Show next button
-                document.getElementById('next-btn').classList.add('visible');
-            } catch (err) {
-                console.error('Error submitting answer:', err);
-            }
-        }
-
-        // Next question
-        function nextQuestion() {
-            loadQuestion();
-        }
-
-        // Update stats display
-        async function updateStatsDisplay() {
-            try {
-                const res = await fetch('/api/stats', { headers: getHeaders() });
-                const data = await res.json();
-                if (data.user) {
-                    document.getElementById('level-display').textContent = 'Уровень ' + data.user.level;
-                    document.getElementById('exp-display').textContent = 'EXP: ' + data.user.total_exp;
-                }
-            } catch (err) {
-                console.error('Error updating stats:', err);
-            }
-        }
-
-        // Load stats
-        async function loadStats() {
-            try {
-                const res = await fetch('/api/stats', { headers: getHeaders() });
-                const data = await res.json();
-                
-                if (data.user) {
-                    document.getElementById('stat-level').textContent = data.user.level;
-                    document.getElementById('stat-exp').textContent = data.user.total_exp;
-                    document.getElementById('stat-correct').textContent = data.user.correct_answers;
-                    document.getElementById('stat-wrong').textContent = data.user.wrong_answers;
-                    document.getElementById('stat-progress').textContent = 
-                        Math.round(data.progress) + '%';
-                }
-            } catch (err) {
-                console.error('Error loading stats:', err);
-            }
-        }
-
-        // Load leaderboard
-        async function loadLeaderboard() {
-            try {
-                const res = await fetch('/api/leaderboard', { headers: getHeaders() });
-                const data = await res.json();
-                
-                const tbody = document.getElementById('leaderboard-body');
-                tbody.innerHTML = '';
-                
-                if (data.entries.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;">Пока нет игроков. Будь первым!</td></tr>';
-                    return;
-                }
-
-                data.entries.forEach((entry, idx) => {
-                    const tr = document.createElement('tr');
-                    tr.className = idx < 3 ? 'rank-' + (idx + 1) : '';
-                    tr.innerHTML = 
-                        '<td><span class="rank-badge">' + (idx + 1) + '</span></td>' +
-                        '<td>' + entry.id + '</td>' +
-                        '<td>' + entry.level + '</td>' +
-                        '<td>' + entry.total_exp + '</td>' +
-                        '<td>' + entry.correct + '</td>';
-                    tbody.appendChild(tr);
-                });
-            } catch (err) {
-                console.error('Error loading leaderboard:', err);
-            }
-        }
-
-        // Reset progress
-        async function resetProgress() {
-            if (!confirm('Вы уверены? Весь прогресс будет сброшен.')) return;
-
-            try {
-                await fetch('/api/reset', { method: 'POST', headers: getHeaders() });
-                alert('Прогресс сброшен!');
-                loadStats();
-            } catch (err) {
-                console.error('Error resetting progress:', err);
-            }
-        }
-
-        // Initial stats update
-        updateStatsDisplay();
-    </script>
+    <script src="/static/app.js"></script>
 </body>
 </html>
 `))
+
+// --- Handlers ---
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
-	
-	data := struct {
-		TotalQuestions int
-	}{
-		TotalQuestions: len(questions),
-	}
-	
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	err := tmpl.Execute(w, data)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-func getOrCreateUserID(w http.ResponseWriter, r *http.Request) string {
-	// Try cookie first
-	cookie, err := r.Cookie("user_id")
-	if err == nil && cookie.Value != "" {
-		return cookie.Value
-	}
-
-	// Create new user ID and set cookie
-	var userID = fmt.Sprintf("user_%d", time.Now().UnixNano())
-	http.SetCookie(w, &http.Cookie{
-		Name:     "user_id",
-		Value:    userID,
-		Path:     "/",
-		MaxAge:   86400 * 365,
-		HttpOnly: false,
-	})
-	return userID
+	data := struct{ TotalQuestions int }{TotalQuestions: len(questions)}
+	tmpl.Execute(w, data)
 }
 
 func quizHandler(w http.ResponseWriter, r *http.Request) {
@@ -1454,45 +535,55 @@ func quizHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get or create user ID (sets cookie if new)
-	userID := getOrCreateUserID(w, r)
-	user := getUser(userID)
-
-	// Find available questions
-	askedMap := make(map[int]bool)
-	for _, id := range user.AskedQuestions {
-		askedMap[id] = true
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		userID = "anonymous"
 	}
 
-	var available []Question
-	for _, q := range questions {
-		if !askedMap[q.ID] {
-			available = append(available, q)
+	player := getPlayer(userID)
+
+	cacheMu.RLock()
+	askedQ := player.AskedQuestions
+	cacheMu.RUnlock()
+
+	// Выбираем случайный вопрос, который ещё не задавали
+	availableQ := make([]int, 0)
+	for i, q := range questions {
+		found := false
+		for _, asked := range askedQ {
+			if asked == q.ID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			availableQ = append(availableQ, i)
 		}
 	}
 
-	response := QuizResponse{
+	if len(availableQ) == 0 {
+		// Все вопросы заданы, начинаем сначала
+		availableQ = make([]int, len(questions))
+		for i := range questions {
+			availableQ[i] = i
+		}
+	}
+
+	idx := availableQ[rand.Intn(len(availableQ))]
+	question := questions[idx]
+
+	cacheMu.Lock()
+	player.AskedQuestions = append(player.AskedQuestions, question.ID)
+	cacheMu.Unlock()
+
+	resp := QuizResponse{
+		Question: &question,
 		Total:    len(questions),
-		Answered: len(user.AskedQuestions),
-	}
-
-	if len(available) > 0 {
-		q := available[rand.Intn(len(available))]
-		response.Question = &q
-
-		// Store current question in session
-		sessionsMu.Lock()
-		sessions[userID] = &Session{
-			UserID:    userID,
-			CurrentQ:  &q,
-			StartTime: time.Now(),
-		}
-		sessionsMu.Unlock()
+		Answered: len(player.AskedQuestions) - 1,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	// Cookie is already set by getOrCreateUserID
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func answerHandler(w http.ResponseWriter, r *http.Request) {
@@ -1501,120 +592,147 @@ func answerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req AnswerRequest
+	var req struct {
+		QuestionID  int `json:"question_id"`
+		OptionIndex int `json:"option_index"`
+	}
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	userID := getOrCreateUserID(w, r)
-	user := getUser(userID)
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		userID = "anonymous"
+	}
 
-	// Find question
-	var q *Question
+	player := getPlayer(userID)
+
+	// Находим вопрос
+	var question *Question
 	for i := range questions {
 		if questions[i].ID == req.QuestionID {
-			q = &questions[i]
+			question = &questions[i]
 			break
 		}
 	}
-	
-	if q == nil {
+
+	if question == nil {
 		http.Error(w, "Question not found", http.StatusNotFound)
 		return
 	}
 
-	response := AnswerResponse{
-		CorrectOption: q.Correct,
-	}
+	correct := req.OptionIndex == question.Correct
+	expGain := 0
+	levelUp := false
 
-	if req.OptionIndex == q.Correct {
-		response.Correct = true
-		response.Exp = q.Exp
-		user.TotalEXP += q.Exp
-		user.CorrectAnswers++
-		response.Message = "✅ Правильно!"
+	if correct {
+		expGain = question.Exp
+		cacheMu.Lock()
+		player.CorrectAnswers++
+		cacheMu.Unlock()
 	} else {
-		response.Correct = false
-		user.WrongAnswers++
-		response.Message = "❌ Неправильно"
+		cacheMu.Lock()
+		player.WrongAnswers++
+		cacheMu.Unlock()
 	}
 
-	updateLevel(user)
-	response.NewExp = user.TotalEXP
-	response.NewLevel = user.Level
+	cacheMu.Lock()
+	oldLevel := player.Level
+	player.AddExperience(expGain)
+	levelUp = player.Level > oldLevel
+	newExp := player.Experience
+	newLevel := player.Level
+	cacheMu.Unlock()
+
+	// Обновляем квесты
+	questSystem := getQuestSystem(userID)
+	if correct {
+		questSystem.UpdateProgress("study_30", expGain)
+	}
+
+	resp := AnswerResponse{
+		Correct:       correct,
+		Exp:           expGain,
+		CorrectOption: question.Correct,
+		Message:       map[bool]string{true: "✅ Правильно!", false: "❌ Неправильно"}[correct],
+		NewExp:        newExp,
+		NewLevel:      newLevel,
+		LevelUp:       levelUp,
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func statsHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		userID = "anonymous"
 	}
 
-	userID := getOrCreateUserID(w, r)
-	user := getUser(userID)
-	
-	response := StatsResponse{
-		User:           user,
+	player := getPlayer(userID)
+	tree := getSkillTree(userID)
+	questSystem := getQuestSystem(userID)
+
+	// Проверяем достижения
+	achievements := getAchievements(userID)
+	unlocked := achievements.CheckAchievements(player, tree, questSystem)
+	if len(unlocked) > 0 {
+		log.Printf("🏆 Игрок %s разблокировал достижения: %v", userID, unlocked)
+	}
+
+	// Начисляем очки навыков за уровень
+	skillPoints := game.GetSkillPointsForLevel(player.Level)
+	cacheMu.Lock()
+	tree.EarnSkillPoints(skillPoints)
+	cacheMu.Unlock()
+
+	resp := StatsResponse{
+		Player:         player,
 		TotalQuestions: len(questions),
-		Progress:       float64(len(user.AskedQuestions)) / float64(len(questions)) * 100,
+		Progress:       float64(len(player.AskedQuestions)) / float64(len(questions)) * 100,
+		SkillPoints:    tree.SkillPoints,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func leaderboardHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
+	cacheMu.RLock()
+	defer cacheMu.RUnlock()
+
+	entries := make([]LeaderboardEntry, 0, len(playersCache))
+	for _, player := range playersCache {
+		entries = append(entries, LeaderboardEntry{
+			ID:        player.ID,
+			Name:      player.Name,
+			Level:     player.Level,
+			TotalEXP:  player.Experience,
+			Correct:   player.CorrectAnswers,
+			Rating:    player.GetRating(),
+		})
 	}
 
-	usersMu.RLock()
-	defer usersMu.RUnlock()
-
-	type kv struct {
-		ID   string
-		User *UserData
-	}
-	var list []kv
-	for id, u := range users {
-		list = append(list, kv{id, u})
-	}
-
-	// Sort by EXP descending
-	for i := 0; i < len(list); i++ {
-		for j := i + 1; j < len(list); j++ {
-			if list[j].User.TotalEXP > list[i].User.TotalEXP {
-				list[i], list[j] = list[j], list[i]
+	// Сортируем по рейтингу
+	for i := 0; i < len(entries)-1; i++ {
+		for j := i + 1; j < len(entries); j++ {
+			if entries[i].Rating < entries[j].Rating {
+				entries[i], entries[j] = entries[j], entries[i]
 			}
 		}
 	}
 
-	limit := 10
-	if len(list) < limit {
-		limit = len(list)
+	// Топ-10
+	if len(entries) > 10 {
+		entries = entries[:10]
 	}
 
-	entries := make([]LeaderboardEntry, limit)
-	for i := 0; i < limit; i++ {
-		entries[i] = LeaderboardEntry{
-			ID:        list[i].ID,
-			Level:     list[i].User.Level,
-			TotalEXP:  list[i].User.TotalEXP,
-			Correct:   list[i].User.CorrectAnswers,
-		}
-	}
-
-	response := LeaderboardResponse{
-		Entries: entries,
-	}
-
+	resp := LeaderboardResponse{Entries: entries}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func resetHandler(w http.ResponseWriter, r *http.Request) {
@@ -1623,15 +741,361 @@ func resetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := getOrCreateUserID(w, r)
-	user := getUser(userID)
-	user.AskedQuestions = []int{}
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		http.Error(w, "User ID required", http.StatusBadRequest)
+		return
+	}
 
-	response := map[string]string{
-		"status": "ok",
-		"message": "Прогресс сброшен",
+	cacheMu.Lock()
+	if player, ok := playersCache[userID]; ok {
+		player.Experience = 0
+		player.Level = 1
+		player.CorrectAnswers = 0
+		player.WrongAnswers = 0
+		player.AskedQuestions = []int{}
+		player.GoKnowledge = 0
+		player.Focus = 100
+		player.Willpower = 100
+		player.Dopamine = 100
+	}
+	if tree, ok := skillTreesCache[userID]; ok {
+		*tree = *game.NewSkillTree(userID)
+	}
+	if qs, ok := questSystemsCache[userID]; ok {
+		*qs = *game.NewQuestSystem(userID)
+	}
+	if as, ok := achievementsCache[userID]; ok {
+		*as = *game.NewAchievementSystem(userID)
+	}
+	cacheMu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func skillsHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		userID = "anonymous"
+	}
+
+	tree := getSkillTree(userID)
+	bonuses := tree.GetTotalBonuses()
+
+	resp := SkillsResponse{
+		Tree:    tree,
+		Bonuses: bonuses,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(resp)
+}
+
+func upgradeSkillHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req UpgradeSkillRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		http.Error(w, "User ID required", http.StatusBadRequest)
+		return
+	}
+
+	tree := getSkillTree(userID)
+	player := getPlayer(userID)
+
+	success, msg := tree.UpgradeSkill(req.SkillID)
+
+	if success {
+		// Применяем бонусы к игроку
+		player.ApplySkillBonuses(tree)
+	}
+
+	resp := map[string]string{"message": msg}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func questsHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		userID = "anonymous"
+	}
+
+	qs := getQuestSystem(userID)
+
+	resp := QuestsResponse{System: qs}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func achievementsHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		userID = "anonymous"
+	}
+
+	player := getPlayer(userID)
+	tree := getSkillTree(userID)
+	qs := getQuestSystem(userID)
+	as := getAchievements(userID)
+
+	// Проверяем достижения
+	as.CheckAchievements(player, tree, qs)
+
+	resp := AchievementsResponse{
+		System:        as,
+		UnlockedCount: as.GetUnlockedCount(),
+		TotalCount:    as.GetTotalCount(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func studyGoHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req StudyGoRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		userID = "anonymous"
+	}
+
+	player := getPlayer(userID)
+	msg := player.StudyGo(req.Minutes)
+
+	// Обновляем квест
+	questSystem := getQuestSystem(userID)
+	questSystem.UpdateProgress("study_30", req.Minutes)
+
+	resp := map[string]string{"message": msg}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func restHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req RestRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		userID = "anonymous"
+	}
+
+	player := getPlayer(userID)
+	msg := player.Rest(req.Minutes)
+
+	resp := map[string]string{"message": msg}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func backupHandler(w http.ResponseWriter, r *http.Request) {
+	backupPath, err := database.CreateBackup(dbPath)
+	if err != nil {
+		resp := map[string]string{"message": "❌ Ошибка бэкапа: " + err.Error()}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Очищаем старые бэкапы
+	database.CleanupOldBackups(7)
+
+	resp := map[string]string{"message": "Бэкап создан: " + backupPath}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// --- Database save/load helpers ---
+
+func savePlayerToDB(player *game.Player) {
+	askedJSON, _ := json.Marshal(player.AskedQuestions)
+
+	_, err := database.DB.Exec(`
+		INSERT OR REPLACE INTO players 
+		(user_id, name, level, experience, go_knowledge, focus, willpower, money, dopamine, 
+		 play_time, days_played, current_day, current_hour, correct_answers, wrong_answers, 
+		 asked_questions, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, player.ID, player.Name, player.Level, player.Experience, player.GoKnowledge,
+		player.Focus, player.Willpower, player.Money, player.Dopamine,
+		player.PlayTime, player.DaysPlayed, player.CurrentDay, player.CurrentHour,
+		player.CorrectAnswers, player.WrongAnswers, string(askedJSON),
+		player.CreatedAt, time.Now())
+
+	if err != nil {
+		log.Printf("⚠️  Ошибка сохранения игрока %s: %v", player.ID, err)
+	}
+}
+
+func loadSkillTreeFromDB(userID string) *game.SkillTree {
+	tree := game.NewSkillTree(userID)
+
+	var skillPoints, totalPoints int
+	err := database.DB.QueryRow(`
+		SELECT skill_points, total_points FROM skill_trees WHERE user_id = ?
+	`, userID).Scan(&skillPoints, &totalPoints)
+
+	if err == nil {
+		tree.SkillPoints = skillPoints
+		tree.TotalPoints = totalPoints
+	}
+
+	// Загружаем навыки
+	rows, err := database.DB.Query(`
+		SELECT skill_id, level, unlocked FROM skills WHERE user_id = ?
+	`, userID)
+	if err != nil {
+		return tree
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var skillID string
+		var level, unlocked int
+		if err := rows.Scan(&skillID, &level, &unlocked); err != nil {
+			continue
+		}
+		if skill, ok := tree.Skills[skillID]; ok {
+			skill.Level = level
+			skill.Unlocked = unlocked == 1
+		}
+	}
+
+	return tree
+}
+
+func saveSkillTreeToDB(userID string, tree *game.SkillTree) {
+	if tree == nil {
+		return
+	}
+
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return
+	}
+	defer tx.Rollback()
+
+	// Сохраняем дерево
+	tx.Exec(`
+		INSERT OR REPLACE INTO skill_trees (user_id, skill_points, total_points)
+		VALUES (?, ?, ?)
+	`, userID, tree.SkillPoints, tree.TotalPoints)
+
+	// Сохраняем навыки
+	for _, skill := range tree.Skills {
+		tx.Exec(`
+			INSERT OR REPLACE INTO skills (user_id, skill_id, level, unlocked)
+			VALUES (?, ?, ?, ?)
+		`, userID, skill.ID, skill.Level, boolToInt(skill.Unlocked))
+	}
+
+	tx.Commit()
+}
+
+func loadQuestSystemFromDB(userID string) *game.QuestSystem {
+	qs := game.NewQuestSystem(userID)
+
+	var day, streak, totalCompleted int
+	err := database.DB.QueryRow(`
+		SELECT 1, 0, 0
+	`).Scan(&day, &streak, &totalCompleted)
+
+	if err == nil {
+		qs.Day = day
+		qs.Streak = streak
+		qs.TotalCompleted = totalCompleted
+	}
+
+	return qs
+}
+
+func saveQuestSystemToDB(userID string, qs *game.QuestSystem) {
+	if qs == nil {
+		return
+	}
+	// Заглушка для сохранения
+}
+
+func loadAchievementsFromDB(userID string) *game.AchievementSystem {
+	as := game.NewAchievementSystem(userID)
+
+	rows, err := database.DB.Query(`
+		SELECT achievement_id, unlocked_at FROM achievements WHERE user_id = ?
+	`, userID)
+	if err != nil {
+		return as
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var achievementID string
+		var unlockedAt time.Time
+		if err := rows.Scan(&achievementID, &unlockedAt); err != nil {
+			continue
+		}
+		if achievement, ok := as.Achievements[achievementID]; ok {
+			achievement.Unlocked = true
+			achievement.UnlockedAt = unlockedAt
+		}
+	}
+
+	return as
+}
+
+func saveAchievementsToDB(userID string, as *game.AchievementSystem) {
+	if as == nil {
+		return
+	}
+
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return
+	}
+	defer tx.Rollback()
+
+	for _, achievement := range as.Achievements {
+		if achievement.Unlocked {
+			tx.Exec(`
+				INSERT OR REPLACE INTO achievements (user_id, achievement_id, unlocked_at)
+				VALUES (?, ?, ?)
+			`, userID, achievement.ID, achievement.UnlockedAt)
+		}
+	}
+
+	tx.Commit()
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
