@@ -5,6 +5,11 @@ const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
 // Импортируем эффекты (глобально из vue-effects.js)
 const { useConfetti, useParticles, useToast, useLevelUp, useCombo, useShake, useRipple, useFloatingText } = window.VueEffects || {};
 
+// Инициализируем AuthStore
+if (typeof AuthStore !== 'undefined') {
+    AuthStore.init();
+}
+
 createApp({
     setup() {
         // === Состояние приложения ===
@@ -482,7 +487,18 @@ createApp({
     }
 }).mount('#app');
 
-// Регистрируем компонент GodotGame
-if (typeof VueGodotGame !== 'undefined') {
-    app.component('godot-game', VueGodotGame);
+// Регистрируем компоненты
+if (typeof window !== 'undefined') {
+    if (typeof VueGodotGame !== 'undefined') {
+        window.app.component('godot-game', VueGodotGame);
+    }
+    if (typeof LoginComponent !== 'undefined') {
+        window.app.component('login-component', LoginComponent);
+    }
+    if (typeof RegisterComponent !== 'undefined') {
+        window.app.component('register-component', RegisterComponent);
+    }
+    if (typeof ProfileComponent !== 'undefined') {
+        window.app.component('profile-component', ProfileComponent);
+    }
 }

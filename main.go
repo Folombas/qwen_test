@@ -364,6 +364,7 @@ var tmpl = template.Must(template.New("index").Parse(`
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/modern.css">
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/auth-styles.css">
     <!-- Vue.js 3 CDN -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 </head>
@@ -399,6 +400,15 @@ var tmpl = template.Must(template.New("index").Parse(`
                 <transition name="nav-fade" appear>
                     <button class="nav-btn" :class="{ active: currentPage === 'game' }" @click="navigate('game')">🎮</button>
                 </transition>
+                
+                <!-- Auth Button -->
+                <transition name="nav-fade" appear>
+                    <button v-if="!AuthStore || !AuthStore.isAuthenticated()" class="nav-btn" @click="navigate('login')">🔐</button>
+                    <button v-else class="nav-btn profile-btn" @click="navigate('profile')">
+                        👤 {{ AuthStore.getUser()?.name || 'Profile' }}
+                    </button>
+                </transition>
+                
                 <button class="theme-toggle" @click="toggleTheme()">{{ theme === 'dark' ? '☀️' : '🌙' }}</button>
             </div>
         </header>
@@ -713,6 +723,27 @@ var tmpl = template.Must(template.New("index").Parse(`
                     <godot-game></godot-game>
                 </div>
             </transition>
+            
+            <!-- Login -->
+            <transition name="page">
+                <div v-show="currentPage === 'login'" class="page">
+                    <login-component></login-component>
+                </div>
+            </transition>
+            
+            <!-- Register -->
+            <transition name="page">
+                <div v-show="currentPage === 'register'" class="page">
+                    <register-component></register-component>
+                </div>
+            </transition>
+            
+            <!-- Profile -->
+            <transition name="page">
+                <div v-show="currentPage === 'profile'" class="page">
+                    <profile-component></profile-component>
+                </div>
+            </transition>
         </main>
 
         <!-- Toast Notifications -->
@@ -757,6 +788,9 @@ var tmpl = template.Must(template.New("index").Parse(`
     <script>
         window.VueEffects = {};
     </script>
+    <script src="/static/auth-store.js"></script>
+    <script src="/static/login-component.js"></script>
+    <script src="/static/register-component.js"></script>
     <script src="/static/godot-bridge.js"></script>
     <script src="/static/vue-game.js"></script>
     <script src="/static/vue-app.js"></script>
