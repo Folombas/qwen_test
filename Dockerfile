@@ -41,7 +41,6 @@ COPY --from=builder /app/qwen_test .
 
 # Копирование статики и шаблонов
 COPY --from=builder /app/static ./static
-COPY --from=builder /app/templates ./templates
 COPY --from=builder /app/questions.json .
 
 # Создание директорий для данных
