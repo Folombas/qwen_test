@@ -501,4 +501,22 @@ if (typeof window !== 'undefined') {
     if (typeof ProfileComponent !== 'undefined') {
         window.app.component('profile-component', ProfileComponent);
     }
+    if (typeof AdminLayout !== 'undefined') {
+        window.app.component('admin-layout', AdminLayout);
+    }
+    if (typeof AdminDashboard !== 'undefined') {
+        window.app.component('admin-dashboard', AdminDashboard);
+    }
+    if (typeof AdminUsers !== 'undefined') {
+        window.app.component('admin-users', AdminUsers);
+    }
+    if (typeof AdminQuestions !== 'undefined') {
+        window.app.component('admin-questions', AdminQuestions);
+    }
+    if (typeof AdminActivity !== 'undefined') {
+        window.app.component('admin-activity', AdminActivity);
+    }
+    if (typeof AdminSettings !== 'undefined') {
+        window.app.component('admin-settings', AdminSettings);
+    }
 }

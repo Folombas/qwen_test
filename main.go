@@ -390,6 +390,7 @@ var tmpl = template.Must(template.New("index").Parse(`
     <link rel="stylesheet" href="/static/modern.css">
     <link rel="stylesheet" href="/static/style.css">
     <link rel="stylesheet" href="/static/auth-styles.css">
+    <link rel="stylesheet" href="/static/admin-styles.css">
     <!-- Vue.js 3 CDN -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 </head>
@@ -769,6 +770,13 @@ var tmpl = template.Must(template.New("index").Parse(`
                     <profile-component></profile-component>
                 </div>
             </transition>
+            
+            <!-- Admin -->
+            <transition name="page">
+                <div v-show="currentPage === 'admin'" class="page admin-page">
+                    <admin-layout></admin-layout>
+                </div>
+            </transition>
         </main>
 
         <!-- Toast Notifications -->
@@ -814,8 +822,14 @@ var tmpl = template.Must(template.New("index").Parse(`
         window.VueEffects = {};
     </script>
     <script src="/static/auth-store.js"></script>
+    <script src="/static/admin-store.js"></script>
+    <script src="/static/admin-layout.js"></script>
+    <script src="/static/admin-components.js"></script>
+    <script src="/static/admin-dashboard.js"></script>
+    <script src="/static/admin-users.js"></script>
     <script src="/static/login-component.js"></script>
     <script src="/static/register-component.js"></script>
+    <script src="/static/profile-component.js"></script>
     <script src="/static/godot-bridge.js"></script>
     <script src="/static/vue-game.js"></script>
     <script src="/static/vue-app.js"></script>
