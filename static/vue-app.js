@@ -519,4 +519,18 @@ if (typeof window !== 'undefined') {
     if (typeof AdminSettings !== 'undefined') {
         window.app.component('admin-settings', AdminSettings);
     }
+    if (typeof TutorialOverlay !== 'undefined') {
+        window.app.component('tutorial-overlay', TutorialOverlay);
+    }
+    if (typeof TutorialButton !== 'undefined') {
+        window.app.component('tutorial-button', TutorialButton);
+    }
+    if (typeof TutorialHelpButton !== 'undefined') {
+        window.app.component('tutorial-help-button', TutorialHelpButton);
+    }
+}
+
+// Инициализируем TutorialStore
+if (typeof TutorialStore !== 'undefined') {
+    TutorialStore.init();
 }

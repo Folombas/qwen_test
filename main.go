@@ -391,6 +391,7 @@ var tmpl = template.Must(template.New("index").Parse(`
     <link rel="stylesheet" href="/static/style.css">
     <link rel="stylesheet" href="/static/auth-styles.css">
     <link rel="stylesheet" href="/static/admin-styles.css">
+    <link rel="stylesheet" href="/static/tutorial-styles.css">
     <!-- Vue.js 3 CDN -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 </head>
@@ -436,6 +437,7 @@ var tmpl = template.Must(template.New("index").Parse(`
                 </transition>
                 
                 <button class="theme-toggle" @click="toggleTheme()">{{ theme === 'dark' ? '☀️' : '🌙' }}</button>
+                <tutorial-help-button></tutorial-help-button>
             </div>
         </header>
 
@@ -786,6 +788,9 @@ var tmpl = template.Must(template.New("index").Parse(`
             </div>
         </transition-group>
 
+        <!-- Tutorial Overlay -->
+        <tutorial-overlay></tutorial-overlay>
+
         <!-- Confetti Canvas -->
         <canvas v-if="isActive" class="confetti-canvas"></canvas>
 
@@ -822,6 +827,9 @@ var tmpl = template.Must(template.New("index").Parse(`
         window.VueEffects = {};
     </script>
     <script src="/static/auth-store.js"></script>
+    <script src="/static/tutorial-store.js"></script>
+    <script src="/static/tutorial-overlay.js"></script>
+    <script src="/static/tutorial-button.js"></script>
     <script src="/static/admin-store.js"></script>
     <script src="/static/admin-layout.js"></script>
     <script src="/static/admin-components.js"></script>
