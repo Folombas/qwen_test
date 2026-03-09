@@ -193,31 +193,38 @@ createApp({
                 lastCorrect.value = data.correct;
 
                 if (data.correct) {
+                    // 🎵 ЗВУК правильного ответа!
+                    SoundStore.play('correct');
+                    
                     // Эффекты для правильного ответа
                     toast.success('✅ Правильно! +' + data.exp + ' EXP');
-                    
+
                     if (particles.emitParticles) {
                         const rect = event?.target?.getBoundingClientRect();
                         const x = rect ? (rect.left + rect.width / 2) : 50;
                         const y = rect ? (rect.top + rect.height / 2) : 50;
                         particles.emitParticles(x, y, 30, '#10b981');
                     }
-                    
+
                     if (floatingText.showFloatingText) {
-                        floatingText.showFloatingText('+' + data.exp + ' EXP', 
-                            event?.clientX || window.innerWidth / 2, 
-                            event?.clientY || window.innerHeight / 2, 
+                        floatingText.showFloatingText('+' + data.exp + ' EXP',
+                            event?.clientX || window.innerWidth / 2,
+                            event?.clientY || window.innerHeight / 2,
                             '#10b981');
                     }
 
                     // Combo
                     if (combo.addCombo) {
                         combo.addCombo();
-                        if (combo.combo.value >= 3) {
+                        if (combo.combo.value >= 2) {
+                            SoundStore.play('combo');
                             toast.info('🔥 Combo x' + combo.combo.value + '!');
                         }
                     }
                 } else {
+                    // 🎵 ЗВУК неправильного ответа!
+                    SoundStore.play('wrong');
+                    
                     // Эффекты для неправильного ответа
                     toast.error('❌ Неправильно!');
                     if (shake.shake) {
@@ -233,6 +240,8 @@ createApp({
                 if (data.level_up) {
                     // LEVEL UP!
                     setTimeout(() => {
+                        // 🎵 ЗВУК повышения уровня!
+                        SoundStore.play('levelup');
                         toast.success('🎉 Уровень повышен: ' + data.new_level + '!');
                         if (levelUp.triggerLevelUp) {
                             levelUp.triggerLevelUp(data.new_level);
@@ -533,4 +542,14 @@ if (typeof window !== 'undefined') {
 // Инициализируем TutorialStore
 if (typeof TutorialStore !== 'undefined') {
     TutorialStore.init();
+}
+
+// Инициализируем SoundStore
+if (typeof SoundStore !== 'undefined') {
+    SoundStore.init();
+}
+
+// Регистрируем SoundSettings компонент
+if (typeof SoundSettings !== 'undefined') {
+    window.app.component('sound-settings', SoundSettings);
 }

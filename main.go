@@ -392,6 +392,7 @@ var tmpl = template.Must(template.New("index").Parse(`
     <link rel="stylesheet" href="/static/auth-styles.css">
     <link rel="stylesheet" href="/static/admin-styles.css">
     <link rel="stylesheet" href="/static/tutorial-styles.css">
+    <link rel="stylesheet" href="/static/sound-styles.css">
     <!-- Vue.js 3 CDN -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 </head>
@@ -438,6 +439,7 @@ var tmpl = template.Must(template.New("index").Parse(`
                 
                 <button class="theme-toggle" @click="toggleTheme()">{{ theme === 'dark' ? '☀️' : '🌙' }}</button>
                 <tutorial-help-button></tutorial-help-button>
+                <sound-settings></sound-settings>
             </div>
         </header>
 
@@ -827,6 +829,8 @@ var tmpl = template.Must(template.New("index").Parse(`
         window.VueEffects = {};
     </script>
     <script src="/static/auth-store.js"></script>
+    <script src="/static/sound-store.js"></script>
+    <script src="/static/sound-settings.js"></script>
     <script src="/static/tutorial-store.js"></script>
     <script src="/static/tutorial-overlay.js"></script>
     <script src="/static/tutorial-button.js"></script>
