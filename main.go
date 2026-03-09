@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"qwen_test/internal/auth"
 	"qwen_test/internal/database"
 	"qwen_test/internal/game"
 
@@ -122,6 +123,23 @@ func main() {
 	defer database.CloseDB()
 	log.Printf("💾 База данных инициализирована: %s", dbPath)
 
+	// Запускаем миграции для аутентификации
+	if err := database.RunAuthMigrations(); err != nil {
+		log.Fatal("Ошибка миграций auth:", err)
+	}
+
+	// Инициализируем JWT сервис
+	jwtService := auth.NewJWTService(
+		"your-super-secret-key-change-me-in-production-min-32-chars",
+		15*time.Minute,  // Access token
+		7*24*time.Hour,  // Refresh token (7 days)
+	)
+
+	// Инициализируем auth сервис и handlers
+	authService := auth.NewAuthService(database.DB, jwtService)
+	authHandler := auth.NewAuthHandler(authService)
+	authMiddleware := auth.NewAuthMiddleware(jwtService)
+
 	// Загружаем игроков из БД
 	loadPlayersCache()
 
@@ -136,20 +154,37 @@ func main() {
 
 	// HTTP handlers
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	
+	// Public routes
 	http.HandleFunc("/", homeHandler)
+	
+	// Auth routes (public)
+	http.HandleFunc("/api/auth/register", authHandler.Register)
+	http.HandleFunc("/api/auth/login", authHandler.Login)
+	http.HandleFunc("/api/auth/forgot-password", authHandler.ForgotPassword)
+	http.HandleFunc("/api/auth/reset-password", authHandler.ResetPassword)
+	http.HandleFunc("/api/auth/verify-email", authHandler.VerifyEmail)
+	
+	// Auth routes (protected)
+	http.Handle("/api/auth/logout", authMiddleware.Middleware(http.HandlerFunc(authHandler.Logout)))
+	http.Handle("/api/auth/refresh", authMiddleware.Middleware(http.HandlerFunc(authHandler.Refresh)))
+	http.Handle("/api/auth/me", authMiddleware.Middleware(http.HandlerFunc(authHandler.Me)))
+	http.Handle("/api/auth/change-password", authMiddleware.Middleware(http.HandlerFunc(authHandler.ChangePassword)))
+	
+	// Game routes
 	http.HandleFunc("/api/quiz", quizHandler)
 	http.HandleFunc("/api/answer", answerHandler)
-	http.HandleFunc("/api/stats", statsHandler)
+	http.Handle("/api/stats", authMiddleware.OptionalMiddleware(http.HandlerFunc(statsHandler)))
 	http.HandleFunc("/api/leaderboard", leaderboardHandler)
-	http.HandleFunc("/api/reset", resetHandler)
-	http.HandleFunc("/api/skills", skillsHandler)
-	http.HandleFunc("/api/skills/upgrade", upgradeSkillHandler)
-	http.HandleFunc("/api/quests", questsHandler)
-	http.HandleFunc("/api/achievements", achievementsHandler)
-	http.HandleFunc("/api/study", studyGoHandler)
-	http.HandleFunc("/api/rest", restHandler)
-	http.HandleFunc("/api/backup", backupHandler)
-	http.HandleFunc("/api/game", gameHandler)
+	http.Handle("/api/reset", authMiddleware.Middleware(http.HandlerFunc(resetHandler)))
+	http.Handle("/api/skills", authMiddleware.OptionalMiddleware(http.HandlerFunc(skillsHandler)))
+	http.Handle("/api/skills/upgrade", authMiddleware.Middleware(http.HandlerFunc(upgradeSkillHandler)))
+	http.Handle("/api/quests", authMiddleware.OptionalMiddleware(http.HandlerFunc(questsHandler)))
+	http.Handle("/api/achievements", authMiddleware.OptionalMiddleware(http.HandlerFunc(achievementsHandler)))
+	http.Handle("/api/study", authMiddleware.OptionalMiddleware(http.HandlerFunc(studyGoHandler)))
+	http.Handle("/api/rest", authMiddleware.OptionalMiddleware(http.HandlerFunc(restHandler)))
+	http.Handle("/api/backup", authMiddleware.Middleware(http.HandlerFunc(backupHandler)))
+	http.Handle("/api/game", authMiddleware.OptionalMiddleware(http.HandlerFunc(gameHandler)))
 
 	port := ":8080"
 	fmt.Printf("🚀 Go Quiz Web Server starting on http://localhost%s\n", port)
