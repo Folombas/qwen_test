@@ -526,7 +526,7 @@ var tmpl = template.Must(template.New("index").Parse(`
                 <div v-show="currentPage === 'quiz'" class="page" :class="{ 'shake': isShaking }">
                     <div class="quiz-container">
                         <div class="quiz-header">
-                            <span>Вопрос {{ quizAnswered + 1 }} из {{ quizTotal }}</span>
+                            <span>Вопрос <span v-text="quizAnswered + 1"></span> из <span v-text="quizTotal"></span></span>
                             <span class="level-badge">Уровень {{ player.level }}</span>
                         </div>
                         <div class="progress-bar">
