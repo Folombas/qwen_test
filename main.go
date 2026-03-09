@@ -328,36 +328,44 @@ var tmpl = template.Must(template.New("index").Parse(`
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/modern.css">
     <link rel="stylesheet" href="/static/style.css">
+    <!-- Vue.js 3 CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 </head>
 <body>
-    <div class="container">
+    <div class="container" id="app">
         <header>
             <div class="logo">🧠 Go Quiz</div>
             <div class="header-actions">
-                <button class="nav-btn" onclick="showPage('home')">🏠</button>
-                <button class="nav-btn" onclick="showPage('quiz')">🎯</button>
-                <button class="nav-btn" onclick="showPage('study')">📚</button>
-                <button class="nav-btn" onclick="showPage('skills')">🌳</button>
-                <button class="nav-btn" onclick="showPage('quests')">📋</button>
-                <button class="nav-btn" onclick="showPage('achievements')">🏆</button>
-                <button class="nav-btn" onclick="showPage('stats')">📊</button>
-                <button class="nav-btn" onclick="showPage('leaderboard')">👑</button>
-                <button class="theme-toggle" onclick="toggleTheme()">☀️</button>
+                <button class="nav-btn" :class="{ active: currentPage === 'home' }" @click="navigate('home')">🏠</button>
+                <button class="nav-btn" :class="{ active: currentPage === 'quiz' }" @click="navigate('quiz')">🎯</button>
+                <button class="nav-btn" :class="{ active: currentPage === 'study' }" @click="navigate('study')">📚</button>
+                <button class="nav-btn" :class="{ active: currentPage === 'skills' }" @click="navigate('skills')">🌳</button>
+                <button class="nav-btn" :class="{ active: currentPage === 'quests' }" @click="navigate('quests')">📋</button>
+                <button class="nav-btn" :class="{ active: currentPage === 'achievements' }" @click="navigate('achievements')">🏆</button>
+                <button class="nav-btn" :class="{ active: currentPage === 'stats' }" @click="navigate('stats')">📊</button>
+                <button class="nav-btn" :class="{ active: currentPage === 'leaderboard' }" @click="navigate('leaderboard')">👑</button>
+                <button class="theme-toggle" @click="toggleTheme()">{{ theme === 'dark' ? '☀️' : '🌙' }}</button>
             </div>
         </header>
 
         <main class="main-content">
+            <!-- Loading -->
+            <div v-if="isLoading" class="loading-overlay">
+                <div class="spinner"></div>
+                <p>Загрузка...</p>
+            </div>
+
             <!-- Home -->
-            <div id="home" class="page active">
+            <div v-show="currentPage === 'home'" class="page fade-in">
                 <div class="hero">
                     <h1>Прокачай знания Go</h1>
                     <p>Викторина + RPG элементы: уровни, навыки, достижения!</p>
-                    <button class="start-btn" onclick="startQuiz()">🚀 Начать</button>
+                    <button class="start-btn" @click="startQuiz()">🚀 Начать</button>
                 </div>
                 <div class="features">
                     <div class="feature-card">
                         <div class="feature-icon">📚</div>
-                        <h3>{{.TotalQuestions}} вопросов</h3>
+                        <h3>{{ quizTotal }} вопросов</h3>
                         <p>Разные темы и сложности</p>
                     </div>
                     <div class="feature-card">
@@ -374,47 +382,61 @@ var tmpl = template.Must(template.New("index").Parse(`
             </div>
 
             <!-- Quiz -->
-            <div id="quiz" class="page">
+            <div v-show="currentPage === 'quiz'" class="page fade-in">
                 <div class="quiz-container">
                     <div class="quiz-header">
-                        <span id="question-counter">Вопрос 1 из {{.TotalQuestions}}</span>
-                        <span id="level-display">Уровень 1</span>
+                        <span>Вопрос {{ quizAnswered + 1 }} из {{ quizTotal }}</span>
+                        <span>Уровень {{ player.level }}</span>
                     </div>
                     <div class="progress-bar">
-                        <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                        <div class="progress-fill" :style="{ width: ((quizAnswered + 1) / quizTotal) * 100 + '%' }"></div>
                     </div>
-                    <div class="question-text" id="question-text">Загрузка...</div>
-                    <div class="options" id="options-container"></div>
+                    <div class="question-text">{{ currentQuestion?.Question || 'Загрузка...' }}</div>
+                    <div class="options">
+                        <button 
+                            v-for="(option, idx) in currentQuestion?.Options" 
+                            :key="idx"
+                            class="option-btn"
+                            :class="{ 
+                                disabled: answered,
+                                correct: answered && idx === currentQuestion?.Correct,
+                                wrong: answered && idx === selectedOption && !currentQuestion?.Correct
+                            }"
+                            @click="answerQuestion(idx)"
+                        >
+                            {{ option }}
+                        </button>
+                    </div>
                     <div class="quiz-footer">
-                        <div class="exp-badge" id="exp-display">EXP: 0</div>
-                        <button class="next-btn" id="next-btn" onclick="nextQuestion()">Далее →</button>
+                        <div class="exp-badge">EXP: {{ player.experience }} (Ур. {{ player.level }})</div>
+                        <button class="next-btn" :class="{ visible: answered }" @click="nextQuestion()">Далее →</button>
                     </div>
                 </div>
             </div>
 
             <!-- Study -->
-            <div id="study" class="page">
+            <div v-show="currentPage === 'study'" class="page fade-in">
                 <h2 style="margin-bottom: 30px; text-align: center;">📚 Обучение и отдых</h2>
                 <div class="action-cards">
-                    <div class="action-card" onclick="studyGo(30)">
+                    <div class="action-card" @click="studyGo(30)">
                         <div class="action-icon">📖</div>
                         <div class="action-title">Изучить Go (30 мин)</div>
                         <div class="action-desc">+15 EXP, +6 Знание Go, +10 Дофамин</div>
                         <div class="action-reward">🎯 Квест: 30 минут Go</div>
                     </div>
-                    <div class="action-card" onclick="studyGo(60)">
+                    <div class="action-card" @click="studyGo(60)">
                         <div class="action-icon">📖</div>
                         <div class="action-title">Изучить Go (60 мин)</div>
                         <div class="action-desc">+30 EXP, +12 Знание Go, +20 Дофамин</div>
                         <div class="action-reward">🎯 Квест: 30 минут Go</div>
                     </div>
-                    <div class="action-card" onclick="rest(15)">
+                    <div class="action-card" @click="rest(15)">
                         <div class="action-icon">💤</div>
                         <div class="action-title">Отдохнуть (15 мин)</div>
                         <div class="action-desc">+7 Фокус, +5 Дофамин</div>
                         <div class="action-reward">😌 Восстановление</div>
                     </div>
-                    <div class="action-card" onclick="rest(30)">
+                    <div class="action-card" @click="rest(30)">
                         <div class="action-icon">💤</div>
                         <div class="action-title">Отдохнуть (30 мин)</div>
                         <div class="action-desc">+15 Фокус, +10 Дофамин</div>
@@ -422,81 +444,144 @@ var tmpl = template.Must(template.New("index").Parse(`
                     </div>
                 </div>
                 <div style="text-align: center;">
-                    <button class="backup-btn" onclick="createBackup()">💾 Создать бэкап</button>
+                    <button class="backup-btn" @click="createBackup()">💾 Создать бэкап</button>
                 </div>
             </div>
 
             <!-- Skills -->
-            <div id="skills" class="page">
+            <div v-show="currentPage === 'skills'" class="page fade-in">
                 <h2 style="margin-bottom: 20px; text-align: center;">🌳 Дерево навыков</h2>
-                <div class="skill-points-display" id="skill-points-display">
-                    ✨ Очки навыков: 0 (всего: 0)
+                <div class="skill-points-display">
+                    ✨ Очки навыков: {{ skillTree.skill_points }} (всего: {{ skillTree.total_points }})
                 </div>
-                <div class="skills-container" id="skills-container">
-                    Загрузка...
+                <div class="skills-container">
+                    <div v-for="(catName, catIdx) in Object.keys(skillCategories)" :key="catIdx" class="skill-category">
+                        <h3>{{ catName }}</h3>
+                        <div v-for="skillId in skillCategories[catName]" :key="skillId" class="skill-item">
+                            <div class="skill-header">
+                                <div class="skill-name">
+                                    <span>{{ skillTree.skills[skillId]?.icon }}</span>
+                                    <span>{{ skillTree.skills[skillId]?.name }}</span>
+                                </div>
+                                <div class="skill-level">Ур. {{ skillTree.skills[skillId]?.level }}/{{ skillTree.skills[skillId]?.max_level }}</div>
+                            </div>
+                            <div class="skill-bar">
+                                <div class="skill-bar-fill" :style="{ width: getSkillProgress(skillTree.skills[skillId]) + '%' }"></div>
+                            </div>
+                            <div class="skill-description">{{ skillTree.skills[skillId]?.description }}</div>
+                            <div class="skill-bonus">
+                                +{{ (skillTree.skills[skillId]?.bonus_value || 0) * (skillTree.skills[skillId]?.level || 0) }} к {{ getBonusName(skillTree.skills[skillId]?.bonus_type) }} 
+                                (всего: +{{ bonuses[skillTree.skills[skillId]?.bonus_type] || 0 }})
+                            </div>
+                            <button 
+                                class="upgrade-btn" 
+                                @click="upgradeSkill(skillId)"
+                                :disabled="!skillTree.skills[skillId]?.unlocked || skillTree.skills[skillId]?.level >= skillTree.skills[skillId]?.max_level"
+                            >
+                                ⬆️ Улучшить ({{ skillTree.skills[skillId]?.cost }} очк.)
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <!-- Quests -->
-            <div id="quests" class="page">
+            <div v-show="currentPage === 'quests'" class="page fade-in">
                 <h2 style="margin-bottom: 20px; text-align: center;">📋 Ежедневные квесты</h2>
-                <div class="quests-container" id="quests-container">
-                    Загрузка...
+                <div class="quests-container">
+                    <div v-for="quest in questSystem.quests" :key="quest.id" class="quest-item">
+                        <div class="quest-header">
+                            <div class="quest-name">
+                                <span v-if="quest.completed && quest.claimed">✅</span>
+                                <span v-else-if="quest.completed">🎁</span>
+                                <span v-else>⏳</span>
+                                {{ quest.name }}
+                            </div>
+                            <div class="quest-status">{{ quest.progress }}/{{ quest.goal }}</div>
+                        </div>
+                        <div class="quest-progress-bar">
+                            <div class="quest-progress-fill" :style="{ width: getQuestProgress(quest) + '%' }"></div>
+                        </div>
+                        <div>{{ quest.description }}</div>
+                        <button 
+                            v-if="quest.completed && !quest.claimed" 
+                            class="claim-btn" 
+                            @click="claimQuest(quest.id)"
+                        >
+                            🎁 Забрать ({{ quest.reward }} очк.)
+                        </button>
+                    </div>
+                    <p>🔥 Серия дней: {{ questSystem.streak }}</p>
+                    <p>📊 Всего выполнено: {{ questSystem.total_completed }}</p>
                 </div>
             </div>
 
             <!-- Achievements -->
-            <div id="achievements" class="page">
+            <div v-show="currentPage === 'achievements'" class="page fade-in">
                 <h2 style="margin-bottom: 20px; text-align: center;">🏆 Достижения</h2>
-                <div class="achievements-container" id="achievements-container">
-                    Загрузка...
+                <div class="achievements-container">
+                    <p style="margin-bottom: 20px;">
+                        Всего разблокировано: {{ achievements.unlocked_count }}/{{ achievements.total_count }}
+                    </p>
+                    <div 
+                        v-for="ach in Object.values(achievements.system)" 
+                        :key="ach.id"
+                        class="achievement-item"
+                        :class="{ unlocked: ach.unlocked }"
+                    >
+                        <div class="achievement-icon">{{ ach.unlocked ? ach.icon : '🔒' }}</div>
+                        <div class="achievement-info">
+                            <div class="achievement-name">{{ ach.name }}</div>
+                            <div class="achievement-description">{{ ach.description }}</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <!-- Stats -->
-            <div id="stats" class="page">
+            <div v-show="currentPage === 'stats'" class="page fade-in">
                 <h2 style="margin-bottom: 30px; text-align: center;">📊 Статистика</h2>
-                <div class="stats-grid" id="stats-grid">
+                <div class="stats-grid">
                     <div class="stat-card">
-                        <div class="stat-value" id="stat-level">-</div>
+                        <div class="stat-value">{{ player.level }}</div>
                         <div class="stat-label">Уровень</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value" id="stat-exp">-</div>
+                        <div class="stat-value">{{ player.experience }}</div>
                         <div class="stat-label">Всего EXP</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value" id="stat-correct">-</div>
+                        <div class="stat-value">{{ player.correct_answers }}</div>
                         <div class="stat-label">Правильных</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value" id="stat-wrong">-</div>
+                        <div class="stat-value">{{ player.wrong_answers }}</div>
                         <div class="stat-label">Неправильных</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value" id="stat-knowledge">-</div>
+                        <div class="stat-value">{{ player.go_knowledge }}/100</div>
                         <div class="stat-label">Знание Go</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value" id="stat-focus">-</div>
+                        <div class="stat-value">{{ player.focus }}%</div>
                         <div class="stat-label">Фокус</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value" id="stat-willpower">-</div>
+                        <div class="stat-value">{{ player.willpower }}%</div>
                         <div class="stat-label">Сила воли</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value" id="stat-rating">-</div>
+                        <div class="stat-value">{{ player.rating }}</div>
                         <div class="stat-label">Рейтинг</div>
                     </div>
                 </div>
                 <div class="reset-section">
-                    <button class="reset-btn" onclick="resetProgress()">🔄 Сбросить прогресс</button>
+                    <button class="reset-btn" @click="resetProgress()">🔄 Сбросить прогресс</button>
                 </div>
             </div>
 
             <!-- Leaderboard -->
-            <div id="leaderboard" class="page">
+            <div v-show="currentPage === 'leaderboard'" class="page fade-in">
                 <h2 style="margin-bottom: 30px; text-align: center;">👑 Таблица лидеров</h2>
                 <table class="leaderboard-table">
                     <thead>
@@ -508,12 +593,21 @@ var tmpl = template.Must(template.New("index").Parse(`
                             <th>Правильных</th>
                         </tr>
                     </thead>
-                    <tbody id="leaderboard-body"></tbody>
+                    <tbody>
+                        <tr v-for="(entry, idx) in leaderboard" :key="entry.id" :class="'rank-' + (idx + 1)">
+                            <td><span class="rank-badge">{{ idx + 1 }}</span></td>
+                            <td>{{ entry.name }}</td>
+                            <td>{{ entry.level }}</td>
+                            <td>{{ entry.rating }}</td>
+                            <td>{{ entry.correct }}</td>
+                        </tr>
+                    </tbody>
                 </table>
             </div>
         </main>
     </div>
-    <script src="/static/app.js"></script>
+
+    <script src="/static/vue-app.js"></script>
 </body>
 </html>
 `))
