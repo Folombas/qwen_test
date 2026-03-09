@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"qwen_test/internal/admin"
 	"qwen_test/internal/auth"
 	"qwen_test/internal/database"
 	"qwen_test/internal/game"
@@ -128,6 +129,11 @@ func main() {
 		log.Fatal("Ошибка миграций auth:", err)
 	}
 
+	// Запускаем миграции для админ-панели
+	if err := database.RunAdminMigrations(); err != nil {
+		log.Fatal("Ошибка миграций admin:", err)
+	}
+
 	// Инициализируем JWT сервис
 	jwtService := auth.NewJWTService(
 		"your-super-secret-key-change-me-in-production-min-32-chars",
@@ -139,6 +145,10 @@ func main() {
 	authService := auth.NewAuthService(database.DB, jwtService)
 	authHandler := auth.NewAuthHandler(authService)
 	authMiddleware := auth.NewAuthMiddleware(jwtService)
+
+	// Инициализируем admin сервис и handlers
+	adminService := admin.NewAdminService(database.DB)
+	adminHandler := admin.NewAdminHandler(adminService)
 
 	// Загружаем игроков из БД
 	loadPlayersCache()
@@ -170,7 +180,22 @@ func main() {
 	http.Handle("/api/auth/refresh", authMiddleware.Middleware(http.HandlerFunc(authHandler.Refresh)))
 	http.Handle("/api/auth/me", authMiddleware.Middleware(http.HandlerFunc(authHandler.Me)))
 	http.Handle("/api/auth/change-password", authMiddleware.Middleware(http.HandlerFunc(authHandler.ChangePassword)))
+
+	// Admin routes (требуется роль admin)
+	adminRouter := http.NewServeMux()
+	adminRouter.HandleFunc("/dashboard", adminHandler.Dashboard)
+	adminRouter.HandleFunc("/users", adminHandler.GetUsers)
+	adminRouter.HandleFunc("/user", adminHandler.GetUser)
+	adminRouter.HandleFunc("/user/update", adminHandler.UpdateUser)
+	adminRouter.HandleFunc("/user/ban", adminHandler.BanUser)
+	adminRouter.HandleFunc("/user/unban", adminHandler.UnbanUser)
+	adminRouter.HandleFunc("/user/delete", adminHandler.DeleteUser)
+	adminRouter.HandleFunc("/activity", adminHandler.GetActivity)
 	
+	http.Handle("/api/admin/", authMiddleware.Middleware(
+		authMiddleware.RequireRole("admin", "moderator")(adminRouter),
+	))
+
 	// Game routes
 	http.HandleFunc("/api/quiz", quizHandler)
 	http.HandleFunc("/api/answer", answerHandler)
