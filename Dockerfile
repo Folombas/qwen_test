@@ -13,7 +13,8 @@ WORKDIR /app
 # Копирование go.mod и go.sum
 COPY go.mod go.sum ./
 
-# Загрузка зависимостей
+# Загрузка зависимостей (отключаем автоматическое обновление версии)
+ENV GOTOOLCHAIN=local
 RUN go mod download
 
 # Копирование исходного кода
