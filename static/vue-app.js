@@ -115,12 +115,27 @@ createApp({
 
         // === Навигация ===
         function navigate(page) {
+            // 🎵 Звук телепортации при переходе
+            SoundStore.play('teleport');
+            
             currentPage.value = page;
-            if (page === 'stats') loadStats();
+            if (page === 'stats') {
+                SoundStore.play('stats');
+                loadStats();
+            }
             if (page === 'leaderboard') loadLeaderboard();
-            if (page === 'skills') loadSkills();
-            if (page === 'quests') loadQuests();
-            if (page === 'achievements') loadAchievements();
+            if (page === 'skills') {
+                SoundStore.play('stats');
+                loadSkills();
+            }
+            if (page === 'quests') {
+                SoundStore.play('stats');
+                loadQuests();
+            }
+            if (page === 'achievements') {
+                SoundStore.play('stats');
+                loadAchievements();
+            }
         }
 
         // === API запросы ===
@@ -286,11 +301,16 @@ createApp({
                 });
                 
                 if (data.message.includes('✅')) {
+                    // 🎵 Звук улучшения навыка!
+                    SoundStore.play('upgrade');
+                    setTimeout(() => SoundStore.play('unlock'), 300);
                     toast.success(data.message);
                     if (confetti.createConfetti) {
                         confetti.createConfetti(50, 30);
                     }
                 } else {
+                    // 🎵 Звук ошибки
+                    SoundStore.play('error');
                     toast.info(data.message);
                 }
                 
@@ -317,6 +337,10 @@ createApp({
         }
 
         async function claimQuest(questId) {
+            // 🎵 Звук получения награды!
+            SoundStore.play('reward');
+            setTimeout(() => SoundStore.play('achievement'), 400);
+            
             toast.success('🎁 Награда получена!');
             if (confetti.createConfetti) {
                 confetti.createConfetti(50, 50);
@@ -352,12 +376,17 @@ createApp({
 
         // === Обучение и отдых ===
         async function studyGo(minutes) {
+            // 🎵 Звук обучения
+            SoundStore.play('study');
+            
             isLoading.value = true;
             try {
                 const data = await apiRequest('/api/study', {
                     method: 'POST',
                     body: JSON.stringify({ minutes })
                 });
+                // 🎵 Звук награды за обучение
+                SoundStore.play('reward');
                 toast.success(data.message);
                 if (floatingText.showFloatingText) {
                     floatingText.showFloatingText('+EXP', window.innerWidth / 2, window.innerHeight / 2, '#6366f1');
@@ -371,6 +400,9 @@ createApp({
         }
 
         async function rest(minutes) {
+            // 🎵 Звук отдыха
+            SoundStore.play('rest');
+            
             isLoading.value = true;
             try {
                 const data = await apiRequest('/api/rest', {
@@ -386,22 +418,32 @@ createApp({
         }
 
         async function createBackup() {
+            // 🎵 Звук сохранения
+            SoundStore.play('magic');
+            
             try {
                 const data = await apiRequest('/api/backup');
+                // 🎵 Звук успеха
+                SoundStore.play('achievement');
                 toast.success('✅ ' + data.message);
                 if (confetti.createConfetti) {
                     confetti.createConfetti(50, 50);
                 }
             } catch (error) {
                 console.error('Ошибка бэкапа:', error);
+                SoundStore.play('error');
                 toast.error('Ошибка создания бэкапа');
             }
         }
 
         async function resetProgress() {
-            if (!confirm('Вы уверены? Весь прогресс будет сброшен!')) return;
+            if (!confirm('Вы уверены? Весь прогресс будет сброшен!')) {
+                SoundStore.play('error');
+                return;
+            }
             try {
                 await apiRequest('/api/reset', { method: 'POST' });
+                SoundStore.play('teleport');
                 toast.info('Прогресс сброшен');
                 setTimeout(() => location.reload(), 1000);
             } catch (error) {
