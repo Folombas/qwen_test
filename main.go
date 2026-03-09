@@ -468,13 +468,15 @@ var tmpl = template.Must(template.New("index").Parse(`
                 
                 <!-- Auth Button -->
                 <transition name="nav-fade" appear>
-                    <button v-if="!AuthStore || !AuthStore.isAuthenticated()" class="nav-btn" @click="navigate('login')">🔐</button>
+                    <button v-if="!window.AuthStore || !window.AuthStore.isAuthenticated()" class="nav-btn" @click="navigate('login')">🔐</button>
                     <button v-else class="nav-btn profile-btn" @click="navigate('profile')">
-                        👤 {{ AuthStore.getUser()?.name || 'Profile' }}
+                        <span v-text="window.AuthStore && window.AuthStore.getUser() ? window.AuthStore.getUser().name : 'Profile'"></span>
                     </button>
                 </transition>
                 
-                <button class="theme-toggle" @click="toggleTheme()">{{ theme === 'dark' ? '☀️' : '🌙' }}</button>
+                <button class="theme-toggle" @click="toggleTheme()">
+                    <span v-text="theme === 'dark' ? '☀️' : '🌙'"></span>
+                </button>
                 <tutorial-help-button></tutorial-help-button>
                 <sound-settings></sound-settings>
             </div>
@@ -501,7 +503,7 @@ var tmpl = template.Must(template.New("index").Parse(`
                         <transition-group name="stagger">
                             <div class="feature-card hover-lift" key="f1">
                                 <div class="feature-icon bounce">📚</div>
-                                <h3>{{ quizTotal }} вопросов</h3>
+                                <h3 v-text="quizTotal + ' вопросов'"></h3>
                                 <p>Разные темы и сложности</p>
                             </div>
                             <div class="feature-card hover-lift" key="f2">
