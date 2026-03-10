@@ -2,6 +2,7 @@
 package game
 
 import (
+	"fmt"
 	"math"
 	"time"
 
@@ -100,7 +101,7 @@ func (p *Player) StudyGo(minutes int) string {
 	// Обновляем время
 	p.CurrentHour = validator.ClampHour(p.CurrentHour + minutes/60)
 
-	return "📚 Вы изучили Go в течение " + string(rune(minutes)) + " минут!"
+	return fmt.Sprintf("📚 Вы изучили Go в течение %d минут!", minutes)
 }
 
 // Rest отдыхает
@@ -116,7 +117,7 @@ func (p *Player) Rest(minutes int) string {
 	p.Dopamine = validator.ClampDopamine(p.Dopamine + dopamineGain)
 	p.PlayTime = validator.ClampInt(p.PlayTime+minutes, 0, validator.MaxPlayTime)
 
-	return "💤 Вы отдохнули в течение " + string(rune(minutes)) + " минут!"
+	return fmt.Sprintf("💤 Вы отдохнули в течение %d минут!", minutes)
 }
 
 // GetRating возвращает рейтинг игрока

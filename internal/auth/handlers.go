@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"qwen_test/internal/models"
+	"qwen_test/internal/response"
 )
 
 // AuthHandler HTTP обработчики аутентификации
@@ -22,201 +23,189 @@ func NewAuthHandler(authService *AuthService) *AuthHandler {
 // Register обрабатывает регистрацию
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, `{"error": "Method not allowed"}`, http.StatusMethodNotAllowed)
+		response.MethodNotAllowed(w, r.Method)
 		return
 	}
 
 	var req models.RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
+		response.BadRequest(w, "Invalid request body")
 		return
 	}
 
 	// Валидация
 	if req.Email == "" || req.Password == "" || req.Name == "" {
-		http.Error(w, `{"error": "Email, password and name are required"}`, http.StatusBadRequest)
+		response.BadRequest(w, "Email, password and name are required")
 		return
 	}
 
 	if len(req.Password) < 6 {
-		http.Error(w, `{"error": "Password must be at least 6 characters"}`, http.StatusBadRequest)
+		response.BadRequest(w, "Password must be at least 6 characters")
 		return
 	}
 
 	// Регистрируем пользователя
 	user, tokens, err := h.authService.Register(req)
 	if err != nil {
-		http.Error(w, `{"error": "`+err.Error()+`"}`, http.StatusBadRequest)
+		response.BadRequest(w, err.Error())
 		return
 	}
 
 	// Отправляем ответ
-	response := map[string]interface{}{
-		"user":  user,
-		"tokens": tokens,
+	response.JSON(w, http.StatusCreated, map[string]interface{}{
+		"user":    user,
+		"tokens":  tokens,
 		"message": "Registration successful! Please check your email for verification.",
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(response)
+	})
 }
 
 // Login обрабатывает вход
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, `{"error": "Method not allowed"}`, http.StatusMethodNotAllowed)
+		response.MethodNotAllowed(w, r.Method)
 		return
 	}
 
 	var req models.LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
+		response.BadRequest(w, "Invalid request body")
 		return
 	}
 
 	// Авторизуем пользователя
 	user, tokens, err := h.authService.Login(req)
 	if err != nil {
-		http.Error(w, `{"error": "`+err.Error()+`"}`, http.StatusUnauthorized)
+		response.Unauthorized(w, err.Error())
 		return
 	}
 
 	// Отправляем ответ
-	response := map[string]interface{}{
+	response.JSON(w, http.StatusOK, map[string]interface{}{
 		"user":   user,
 		"tokens": tokens,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	})
 }
 
 // Logout обрабатывает выход
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, `{"error": "Method not allowed"}`, http.StatusMethodNotAllowed)
+		response.MethodNotAllowed(w, r.Method)
 		return
 	}
 
 	userID := GetUserID(r)
 	if userID == 0 {
-		http.Error(w, `{"error": "Unauthorized"}`, http.StatusUnauthorized)
+		response.Unauthorized(w, "Unauthorized")
 		return
 	}
 
 	var req models.RefreshTokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
+		response.BadRequest(w, "Invalid request body")
 		return
 	}
 
 	if err := h.authService.Logout(userID, req.RefreshToken); err != nil {
-		http.Error(w, `{"error": "`+err.Error()+`"}`, http.StatusInternalServerError)
+		response.InternalServerError(w, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Logout successful"})
+	response.Success(w, http.StatusOK, "Logout successful")
 }
 
 // Refresh обрабатывает обновление токена
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, `{"error": "Method not allowed"}`, http.StatusMethodNotAllowed)
+		response.MethodNotAllowed(w, r.Method)
 		return
 	}
 
 	var req models.RefreshTokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
+		response.BadRequest(w, "Invalid request body")
 		return
 	}
 
 	userID := GetUserID(r)
 	if userID == 0 {
-		http.Error(w, `{"error": "Unauthorized"}`, http.StatusUnauthorized)
+		response.Unauthorized(w, "Unauthorized")
 		return
 	}
 
 	tokens, err := h.authService.RefreshToken(req.RefreshToken, userID)
 	if err != nil {
-		http.Error(w, `{"error": "`+err.Error()+`"}`, http.StatusUnauthorized)
+		response.Unauthorized(w, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"tokens": tokens})
+	response.JSON(w, http.StatusOK, map[string]interface{}{"tokens": tokens})
 }
 
 // Me возвращает текущего пользователя
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, `{"error": "Method not allowed"}`, http.StatusMethodNotAllowed)
+		response.MethodNotAllowed(w, r.Method)
 		return
 	}
 
 	userID := GetUserID(r)
 	if userID == 0 {
-		http.Error(w, `{"error": "Unauthorized"}`, http.StatusUnauthorized)
+		response.Unauthorized(w, "Unauthorized")
 		return
 	}
 
 	user, err := h.authService.GetCurrentUser(userID)
 	if err != nil {
-		http.Error(w, `{"error": "`+err.Error()+`"}`, http.StatusNotFound)
+		response.NotFound(w, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(user)
+	response.JSON(w, http.StatusOK, user)
 }
 
 // VerifyEmail обрабатывает подтверждение email
 func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, `{"error": "Method not allowed"}`, http.StatusMethodNotAllowed)
+		response.MethodNotAllowed(w, r.Method)
 		return
 	}
 
 	var req models.EmailVerificationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
+		response.BadRequest(w, "Invalid request body")
 		return
 	}
 
 	if err := h.authService.VerifyEmail(req.Token); err != nil {
-		http.Error(w, `{"error": "`+err.Error()+`"}`, http.StatusBadRequest)
+		response.BadRequest(w, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Email verified successfully"})
+	response.Success(w, http.StatusOK, "Email verified successfully")
 }
 
 // ForgotPassword обрабатывает запрос на сброс пароля
 func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, `{"error": "Method not allowed"}`, http.StatusMethodNotAllowed)
+		response.MethodNotAllowed(w, r.Method)
 		return
 	}
 
 	var req models.PasswordResetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
+		response.BadRequest(w, "Invalid request body")
 		return
 	}
 
 	resetToken, err := h.authService.RequestPasswordReset(req.Email)
 	if err != nil {
-		http.Error(w, `{"error": "`+err.Error()+`"}`, http.StatusInternalServerError)
+		response.InternalServerError(w, err.Error())
 		return
 	}
 
 	// В продакшене здесь отправляем email со ссылкой на сброс
 	// Пока просто возвращаем токен (для тестирования)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	response.JSON(w, http.StatusOK, map[string]string{
 		"message":     "Password reset link sent to your email",
 		"reset_token": resetToken, // Удалить в продакшене!
 	})
@@ -225,35 +214,34 @@ func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 // ResetPassword обрабатывает сброс пароля
 func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, `{"error": "Method not allowed"}`, http.StatusMethodNotAllowed)
+		response.MethodNotAllowed(w, r.Method)
 		return
 	}
 
 	var req models.PasswordResetConfirm
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
+		response.BadRequest(w, "Invalid request body")
 		return
 	}
 
 	if err := h.authService.ResetPassword(req.Token, req.NewPassword); err != nil {
-		http.Error(w, `{"error": "`+err.Error()+`"}`, http.StatusBadRequest)
+		response.BadRequest(w, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Password reset successfully"})
+	response.Success(w, http.StatusOK, "Password reset successfully")
 }
 
 // ChangePassword обрабатывает смену пароля
 func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, `{"error": "Method not allowed"}`, http.StatusMethodNotAllowed)
+		response.MethodNotAllowed(w, r.Method)
 		return
 	}
 
 	userID := GetUserID(r)
 	if userID == 0 {
-		http.Error(w, `{"error": "Unauthorized"}`, http.StatusUnauthorized)
+		response.Unauthorized(w, "Unauthorized")
 		return
 	}
 
@@ -262,15 +250,14 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		NewPassword string `json:"new_password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
+		response.BadRequest(w, "Invalid request body")
 		return
 	}
 
 	if err := h.authService.ChangePassword(userID, req.OldPassword, req.NewPassword); err != nil {
-		http.Error(w, `{"error": "`+err.Error()+`"}`, http.StatusBadRequest)
+		response.BadRequest(w, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Password changed successfully"})
+	response.Success(w, http.StatusOK, "Password changed successfully")
 }

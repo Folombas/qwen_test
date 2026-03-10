@@ -97,8 +97,16 @@ type RestRequest struct {
 var (
 	questions     []Question
 	questionsFile = "questions.json"
-	dbPath        = "qwen_test.db"
+	dbPath        = getEnv("DB_PATH", "qwen_test.db")
 )
+
+// getEnv получает переменную окружения или возвращает значение по умолчанию
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
 
 // Кэш игроков в памяти
 var (
@@ -140,9 +148,14 @@ func main() {
 		log.Fatal("Ошибка миграций social:", err)
 	}
 
-	// Инициализируем JWT сервис
+	// Инициализируем JWT сервис с использованием переменной окружения
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = "your-super-secret-key-change-me-in-production-min-32-chars"
+		log.Println("⚠️  WARNING: JWT_SECRET not set, using default (INSECURE for production)")
+	}
 	jwtService := auth.NewJWTService(
-		"your-super-secret-key-change-me-in-production-min-32-chars",
+		jwtSecret,
 		15*time.Minute,  // Access token
 		7*24*time.Hour,  // Refresh token (7 days)
 	)
@@ -238,7 +251,13 @@ func main() {
 	http.Handle("/api/backup", authMiddleware.Middleware(http.HandlerFunc(backupHandler)))
 	http.Handle("/api/game", authMiddleware.OptionalMiddleware(http.HandlerFunc(gameHandler)))
 
-	port := ":8080"
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = ":8080"
+	}
+	if port[0] != ':' {
+		port = ":" + port
+	}
 	fmt.Printf("🚀 Go Quiz Web Server starting on http://localhost%s\n", port)
 	log.Fatal(http.ListenAndServe(port, nil))
 }

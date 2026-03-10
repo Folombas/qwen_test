@@ -3,6 +3,7 @@ package auth
 
 import (
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -79,7 +80,7 @@ func (s *JWTService) generateAccessToken(userID int64, email, role string) (stri
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    s.config.Issuer,
-			Subject:   string(rune(userID)),
+			Subject:   strconv.FormatInt(userID, 10),
 		},
 	}
 
@@ -94,7 +95,7 @@ func (s *JWTService) generateRefreshToken(userID int64) (string, error) {
 		ExpiresAt: jwt.NewNumericDate(now.Add(s.config.RefreshDuration)),
 		IssuedAt:  jwt.NewNumericDate(now),
 		Issuer:    s.config.Issuer,
-		Subject:   string(rune(userID)),
+		Subject:   strconv.FormatInt(userID, 10),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -150,7 +151,7 @@ func (s *JWTService) RefreshTokens(refreshToken string, userID int64, email, rol
 	}
 
 	// Проверяем что токен принадлежит этому пользователю
-	if claims.Subject != string(rune(userID)) {
+	if claims.Subject != strconv.FormatInt(userID, 10) {
 		return nil, errors.New("token mismatch")
 	}
 
