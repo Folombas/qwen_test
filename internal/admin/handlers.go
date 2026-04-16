@@ -8,7 +8,7 @@ import (
 	"qwen_test/internal/auth"
 )
 
-// AdminHandler HTTP обработчики для админ-панели
+// AdminHandler HTTP обработчики для админской панели
 type AdminHandler struct {
 	adminService *AdminService
 }

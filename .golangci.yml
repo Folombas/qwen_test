@@ -1,0 +1,92 @@
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - gofmt
+    - govet
+    - gosimple
+    - staticcheck
+    - unused
+    - ineffassign
+    - typecheck
+    - errcheck
+    - gosec
+    - misspell
+    - goimports
+    - nakedret
+    - revive
+    - unconvert
+    - unparam
+
+linters-settings:
+  gofmt:
+    simplify: true
+  govet:
+    check-shadowing: true
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+  gosec:
+    severity: medium
+    confidence: medium
+  misspell:
+    locale: US
+  nakedret:
+    max-func-lines: 30
+  revive:
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: exported
+      - name: if-return
+      - name: increment-decrement
+      - name: var-naming
+      - name: var-declaration
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: indent-error-flow
+      - name: errorf
+      - name: empty-block
+      - name: superfluous-else
+      - name: unused-parameter
+      - name: unreachable-code
+      - name: redefines-builtin-id
+
+issues:
+  exclude-use-default: false
+  exclude-rules:
+    # Исключаем некоторые проверки для тестов
+    - path: _test\.go$
+      linters:
+        - errcheck
+        - gosec
+        - unused
+    
+    # Исключаем проверку на магические числа
+    - linters:
+        - gomnd
+      text: "magic number"
+    
+    # Разрешаем использовать _ для игнорирования ошибок
+    - linters:
+        - govet
+      text: "shadow: declaration of"
+
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+output:
+  formats:
+    - format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
